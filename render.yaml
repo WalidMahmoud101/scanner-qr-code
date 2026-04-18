@@ -10,7 +10,7 @@
 # من الخدمة في Render: Disks → Add Disk → Mount path مثلاً /var/data → حجم 1GB+
 # ثم Environment → أضف DATA_DIR=/var/data (نفس مسار الـ mount بالضبط)
 # أعد نشر الخدمة ثم من Shell: npm run seed
-# كده data/app.db يتخزّن على القرص وما يضيعش مع إعادة التشغيل.
+# كده app.db + مجلد qrcodes + manifest.json كلهم تحت نفس القرص (ما يضيعوا مع إعادة التشغيل).
 
 services:
   - type: web

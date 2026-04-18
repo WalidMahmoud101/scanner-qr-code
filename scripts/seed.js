@@ -9,7 +9,9 @@ const ROOT = path.join(__dirname, "..");
 const DATA_DIR = process.env.DATA_DIR
   ? path.resolve(process.env.DATA_DIR)
   : path.join(ROOT, "data");
-const QR_DIR = path.join(ROOT, "public", "qrcodes");
+/** نفس مجلد القاعدة (مهم مع قرص Render الدائم) — مش public/qrcodes عشان ما يضيعش مع إعادة التشغيل */
+const QR_DIR = path.join(DATA_DIR, "qrcodes");
+const MANIFEST_PATH = path.join(DATA_DIR, "manifest.json");
 const DB_PATH = path.join(DATA_DIR, "app.db");
 const COUNT = 170;
 const PUBLIC_URL = (
@@ -52,12 +54,8 @@ async function writeQrFilesAndManifest(db) {
     url: `${PUBLIC_URL}/r/${encodeURIComponent(tok)}`,
     file: `qrcodes/${String(slot).padStart(3, "0")}.png`,
   }));
-  fs.writeFileSync(
-    path.join(ROOT, "public", "manifest.json"),
-    JSON.stringify(manifest, null, 2),
-    "utf8"
-  );
-  console.log(`Wrote ${all.length} QR PNGs + manifest (PUBLIC_URL=${PUBLIC_URL}).`);
+  fs.writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2), "utf8");
+  console.log(`Wrote ${all.length} QR PNGs + manifest → ${MANIFEST_PATH} (PUBLIC_URL=${PUBLIC_URL}).`);
 }
 
 async function main() {
@@ -127,7 +125,7 @@ async function main() {
 
   await writeQrFilesAndManifest(db);
   const n = db.prepare("SELECT COUNT(*) AS c FROM codes").get().c;
-  console.log(`Seeded / updated ${n} codes. QR images in public/qrcodes/`);
+  console.log(`Seeded / updated ${n} codes. QR dir: ${QR_DIR}`);
   db.close();
 }
 

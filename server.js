@@ -17,6 +17,8 @@ const DATA_DIR = process.env.DATA_DIR
   ? path.resolve(process.env.DATA_DIR)
   : path.join(ROOT, "data");
 const DB_PATH = path.join(DATA_DIR, "app.db");
+const QR_CODES_DIR = path.join(DATA_DIR, "qrcodes");
+const MANIFEST_PATH = path.join(DATA_DIR, "manifest.json");
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
 /** Render terminates TLS at the edge and forwards plain HTTP to PORT — listening with HTTPS here yields 502. */
@@ -150,20 +152,20 @@ app.use(protectDashboard);
 
 app.get("/qrcodes-all.zip", (_req, res) => {
   const publicDir = path.join(ROOT, "public");
-  const qDir = path.join(publicDir, "qrcodes");
+  const qDir = QR_CODES_DIR;
   const zipPath = path.join(publicDir, "qrcodes-all.zip");
   if (!fs.existsSync(qDir)) {
-    res.status(404).type("text/plain").send("Missing public/qrcodes — run npm run seed first.");
+    res.status(404).type("text/plain").send("Missing QR folder — run npm run seed first.");
     return;
   }
   const pngs = fs.readdirSync(qDir).filter((f) => f.endsWith(".png"));
   if (!pngs.length) {
-    res.status(404).type("text/plain").send("No PNGs in public/qrcodes — run npm run seed.");
+    res.status(404).type("text/plain").send("No PNGs in data qrcodes folder — run npm run seed.");
     return;
   }
   try {
-    execFileSync("zip", ["-qr", "qrcodes-all.zip", "qrcodes"], {
-      cwd: publicDir,
+    execFileSync("zip", ["-qr", zipPath, "qrcodes"], {
+      cwd: DATA_DIR,
       stdio: "ignore",
     });
   } catch {
@@ -183,6 +185,19 @@ app.use((req, res, next) => {
   next();
 });
 
+app.get("/manifest.json", (req, res, next) => {
+  const primary = MANIFEST_PATH;
+  const fallback = path.join(ROOT, "public", "manifest.json");
+  const p = fs.existsSync(primary) ? primary : fs.existsSync(fallback) ? fallback : null;
+  if (!p) {
+    return next();
+  }
+  res.type("application/json; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store, max-age=0");
+  res.send(fs.readFileSync(p, "utf8"));
+});
+
+app.use("/qrcodes", express.static(QR_CODES_DIR));
 app.use(express.static(path.join(ROOT, "public")));
 
 function html(title, bodyClass, heading, message, sub) {
@@ -366,7 +381,9 @@ app.post("/api/scan", (req, res) => {
         ok: false,
         error: "invalid_token",
         hintAr:
-          "التوكّن داخل الـ QR غير موجود في قاعدة السيرفر الحالية. غالبًا الطباعة من مانيفست/نسخة قديمة، أو لم يُشغَّل npm run seed على Render بعد ضبط PUBLIC_URL. الحل: من Render Shell نفّذ npm run seed ثم أعد طباعة الـ QR من الموقع (أو من الأدمن)، أو امسح كودًا من نفس الموقع وليس نسخة قديمة.",
+          "التوكن في الـ QR مش في قاعدة السيرفر الحالية. من Render Shell شغّل: npm run seed ثم امسح QR من الأدمن أو حمّل ZIP من الموقع (طباعة قديمة = غالبًا غلط).",
+        hintEn:
+          "This QR token is not in the live database. In Render Shell run: npm run seed — then scan a QR from Admin or re-download the ZIP. Old prints often mismatch after a new seed.",
       });
       return;
     }

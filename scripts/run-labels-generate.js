@@ -1,5 +1,5 @@
 /**
- * Runs QR-Burgundy-Labels/generate.js using this project's public/manifest.json.
+ * Runs QR-Burgundy-Labels/generate.js using manifest.json (DATA_DIR/manifest.json أو public/manifest.json).
  * Tokens live only in Site Qr Code (seed); Burgundy only draws label PNGs into its output/.
  *
  * .env (في مجلد مشروع الموقع):
@@ -15,7 +15,16 @@ const os = require("os");
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
 const ROOT = path.join(__dirname, "..");
-const manifest = path.join(ROOT, "public", "manifest.json");
+const DATA_DIR = process.env.DATA_DIR
+  ? path.resolve(process.env.DATA_DIR)
+  : path.join(ROOT, "data");
+const manifestPrimary = path.join(DATA_DIR, "manifest.json");
+const manifestFallback = path.join(ROOT, "public", "manifest.json");
+const manifest = fs.existsSync(manifestPrimary)
+  ? manifestPrimary
+  : fs.existsSync(manifestFallback)
+    ? manifestFallback
+    : manifestPrimary;
 
 function normalizeDir(s) {
   if (s == null || typeof s !== "string") {
@@ -74,7 +83,8 @@ if (!labelsDir) {
 }
 
 if (!fs.existsSync(manifest)) {
-  console.error("لا يوجد public/manifest.json — شغّل أولاً من مجلد الموقع: npm run seed");
+  console.error("لا يوجد manifest.json — شغّل أولاً: npm run seed");
+  console.error("المتوقع:", manifestPrimary, "أو", manifestFallback);
   process.exit(1);
 }
 

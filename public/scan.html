@@ -303,12 +303,13 @@
               );
             } else if (res.status === 404 || (res.body && res.body.error === "invalid_token")) {
               if (window.feedbackScanResult) feedbackScanResult("bad");
-              showResult(
-                "bad",
-                "رمز غير معروف",
-                (res.body && res.body.hintAr) ||
-                  "الـ QR لا يطابق قاعدة السيرفر. جرّب QR من صفحة الأدمن على نفس الموقع، أو أعد seed على Render ثم أعد الطباعة."
-              );
+              (function () {
+                var ar =
+                  (res.body && res.body.hintAr) ||
+                  "الـ QR لا يطابق قاعدة السيرفر. جرّب QR من الأدمن أو أعد npm run seed على Render.";
+                var en = res.body && res.body.hintEn ? " " + res.body.hintEn : "";
+                showResult("bad", "رمز غير معروف / Unknown code", ar + en);
+              })();
             } else if (res.body && res.body.error === "invalid_payload") {
               if (window.feedbackScanResult) feedbackScanResult("bad");
               showResult("bad", "لم أستطع قراءة الرمز", "المحتوى المقروء مش رابط التسجيل المتوقع.");

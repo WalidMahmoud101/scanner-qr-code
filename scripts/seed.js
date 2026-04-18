@@ -16,6 +16,34 @@ function token() {
   return crypto.randomBytes(16).toString("base64url");
 }
 
+/** Always rewrite PNGs + manifest from current DB so files match tokens (even when no new rows). */
+async function writeQrFilesAndManifest(db) {
+  fs.mkdirSync(QR_DIR, { recursive: true });
+  const all = db.prepare("SELECT slot, token FROM codes ORDER BY slot").all();
+  for (const { slot, token: tok } of all) {
+    const url = `${PUBLIC_URL}/r/${encodeURIComponent(tok)}`;
+    const out = path.join(QR_DIR, `${String(slot).padStart(3, "0")}.png`);
+    await QRCode.toFile(out, url, {
+      type: "png",
+      width: 512,
+      margin: 2,
+      errorCorrectionLevel: "M",
+    });
+  }
+  const manifest = all.map(({ slot, token: tok }) => ({
+    slot,
+    token: tok,
+    url: `${PUBLIC_URL}/r/${encodeURIComponent(tok)}`,
+    file: `qrcodes/${String(slot).padStart(3, "0")}.png`,
+  }));
+  fs.writeFileSync(
+    path.join(ROOT, "public", "manifest.json"),
+    JSON.stringify(manifest, null, 2),
+    "utf8"
+  );
+  console.log(`Wrote ${all.length} QR PNGs + manifest (PUBLIC_URL=${PUBLIC_URL}).`);
+}
+
 async function main() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.mkdirSync(QR_DIR, { recursive: true });
@@ -32,7 +60,10 @@ async function main() {
 
   const existing = db.prepare("SELECT COUNT(*) AS c FROM codes").get().c;
   if (existing >= COUNT && !FORCE) {
-    console.log(`Database already has ${existing} codes. Set FORCE_SEED=1 to regenerate.`);
+    console.log(
+      `Database already has ${existing} codes — refreshing QR PNGs + manifest only (tokens unchanged). Use FORCE_SEED=1 to replace all tokens.`
+    );
+    await writeQrFilesAndManifest(db);
     db.close();
     return;
   }
@@ -77,35 +108,9 @@ async function main() {
     insertMany(rows);
   }
 
-  const all = db
-    .prepare("SELECT slot, token FROM codes ORDER BY slot")
-    .all();
-
-  for (const { slot, token: tok } of all) {
-    const url = `${PUBLIC_URL}/r/${encodeURIComponent(tok)}`;
-    const out = path.join(QR_DIR, `${String(slot).padStart(3, "0")}.png`);
-    await QRCode.toFile(out, url, {
-      type: "png",
-      width: 512,
-      margin: 2,
-      errorCorrectionLevel: "M",
-    });
-  }
-
-  const manifest = all.map(({ slot, token: tok }) => ({
-    slot,
-    token: tok,
-    url: `${PUBLIC_URL}/r/${encodeURIComponent(tok)}`,
-    file: `qrcodes/${String(slot).padStart(3, "0")}.png`,
-  }));
-  fs.writeFileSync(
-    path.join(ROOT, "public", "manifest.json"),
-    JSON.stringify(manifest, null, 2),
-    "utf8"
-  );
-
-  console.log(`Seeded ${all.length} codes. QR images in public/qrcodes/`);
-  console.log(`PUBLIC_URL used: ${PUBLIC_URL}`);
+  await writeQrFilesAndManifest(db);
+  const n = db.prepare("SELECT COUNT(*) AS c FROM codes").get().c;
+  console.log(`Seeded / updated ${n} codes. QR images in public/qrcodes/`);
   db.close();
 }
 

@@ -10,6 +10,15 @@
     table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
     th, td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border); }
     th { font-weight: 600; }
+    td.qr-cell { vertical-align: middle; width: 5.5rem; }
+    img.qr-thumb {
+      display: block;
+      width: 72px;
+      height: 72px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #fff;
+    }
     code.tok { font-size: 0.72rem; word-break: break-all; }
     .pill { display: inline-block; padding: 0.15rem 0.45rem; border-radius: 999px; font-size: 0.75rem; }
     .pill.yes { background: #fef3c7; color: #92400e; }
@@ -42,7 +51,11 @@
           (c) =>
             "<tr><td>" +
             c.slot +
-            '</td><td class="tok"><code class="tok">' +
+            '</td><td class="qr-cell"><img class="qr-thumb" src="/api/qr-slot/' +
+            encodeURIComponent(c.slot) +
+            '" width="72" height="72" alt="QR ' +
+            c.slot +
+            '" loading="lazy" /></td><td class="tok"><code class="tok">' +
             c.token +
             "</code></td><td>" +
             (c.used
@@ -54,7 +67,8 @@
         )
         .join("");
       root.innerHTML =
-        "<table><thead><tr><th>#</th><th>Token</th><th>Status</th><th>Used at</th></tr></thead><tbody>" +
+        "<p class=\"sub\" dir=\"rtl\" style=\"margin:0 0 0.75rem;font-size:0.88rem\">الصور هنا تُولَّد من السيرفر من نفس التوكن في القاعدة (ليست ملفات <code>public/qrcodes</code> المخزّنة). لو ملفات الـ ZIP قديمة، شغّل <code>npm run seed</code> مرة بدون <code>FORCE_SEED</code> لتحديث الـ PNG على القرص.</p>" +
+        "<table><thead><tr><th>#</th><th>QR</th><th>Token</th><th>Status</th><th>Used at</th></tr></thead><tbody>" +
         rows +
         "</tbody></table>";
     }

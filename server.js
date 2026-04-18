@@ -8,6 +8,7 @@ const https = require("https");
 const express = require("express");
 const helmet = require("helmet");
 const Database = require("better-sqlite3");
+const QRCode = require("qrcode");
 const selfsigned = require("selfsigned");
 
 const ROOT = __dirname;
@@ -437,6 +438,74 @@ app.get("/api/status", (_req, res) => {
     res.json({ ok: true, total, used, remaining: total - used });
   } finally {
     db.close();
+  }
+});
+
+/** Base URL for /r/… links (env, else infer from request — used for admin QR preview). */
+function getRegistrationBaseUrl(req) {
+  const fromEnv = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || "")
+    .replace(/\/$/, "");
+  if (fromEnv) {
+    return fromEnv;
+  }
+  const proto = String(req.get("x-forwarded-proto") || req.protocol || "https")
+    .split(",")[0]
+    .trim();
+  const host = String(req.get("x-forwarded-host") || req.get("host") || "")
+    .split(",")[0]
+    .trim();
+  if (!host) {
+    return "";
+  }
+  return `${proto}://${host}`;
+}
+
+app.get("/api/qr-slot/:slot", async (req, res) => {
+  const slot = Number(req.params.slot);
+  if (!Number.isFinite(slot) || slot < 1 || slot > 99999) {
+    res.status(400).end();
+    return;
+  }
+  const db = getDb();
+  if (!db) {
+    res.status(503).end();
+    return;
+  }
+  try {
+    const row = db.prepare("SELECT token FROM codes WHERE slot = ?").get(slot);
+    if (!row || !row.token) {
+      res.status(404).end();
+      return;
+    }
+    const base = getRegistrationBaseUrl(req);
+    if (!base) {
+      res
+        .status(500)
+        .type("text/plain; charset=utf-8")
+        .send("Set PUBLIC_URL (or deploy with RENDER_EXTERNAL_URL) to generate QR previews.");
+      return;
+    }
+    const url = `${base}/r/${encodeURIComponent(row.token)}`;
+    const buf = await QRCode.toBuffer(url, {
+      type: "png",
+      width: 256,
+      margin: 2,
+      errorCorrectionLevel: "M",
+    });
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+    res.type("image/png");
+    res.send(buf);
+  } catch (e) {
+    console.error("[api/qr-slot]", e);
+    if (!res.headersSent) {
+      res.status(500).end();
+    }
+  } finally {
+    try {
+      db.close();
+    } catch {
+      /* noop */
+    }
   }
 });
 

@@ -32,7 +32,7 @@ function readLabelEnv() {
     1,
     Number.parseInt(process.env.LABEL_DISPLAY_START || "4410", 10) || 4410
   );
-  const weddingTitle = process.env.LABEL_WEDDING_TITLE || "FAISAL & TALEED WEDDING";
+  const weddingTitle = process.env.LABEL_WEDDING_TITLE || "FAISAL & TALEED'S WEDDING";
   const locationEn = process.env.LABEL_LOCATION_EN || "Sofitel Cairo Downtown Nile";
   return { displayStart, weddingTitle, locationEn };
 }

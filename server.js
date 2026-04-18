@@ -173,6 +173,9 @@ app.use((req, res, next) => {
   if (req.method === "GET" && (req.path === "/scan.html" || req.path === "/admin.html")) {
     res.setHeader("Cache-Control", "no-store, max-age=0");
   }
+  if (req.method === "GET" && req.path.startsWith("/qrcodes/") && /\.png$/i.test(req.path)) {
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+  }
   next();
 });
 
@@ -219,7 +222,9 @@ function getDb() {
 function sanitizeScanText(text) {
   return String(text)
     .trim()
+    .replace(/[\r\n\u2028\u2029]/g, "")
     .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[\u202A-\u202E\u2066-\u2069]/g, "")
     .replace(/^<+|>+$/g, "")
     .trim()
     .replace(/[\s\u00A0]+$/g, "")
@@ -270,6 +275,18 @@ function tokenLookupCandidates(primary) {
     }
   };
   add(primary);
+  const noWs = primary.replace(/\s+/g, "");
+  if (noWs !== primary) {
+    add(noWs);
+  }
+  try {
+    const nfc = primary.normalize("NFKC");
+    if (nfc !== primary) {
+      add(nfc);
+    }
+  } catch {
+    /* ignore */
+  }
   let p = primary;
   for (let i = 0; i < 4; i++) {
     try {
@@ -332,7 +349,21 @@ app.post("/api/scan", (req, res) => {
   try {
     const result = tryRegisterToken(db, token);
     if (result.outcome === "not_found") {
-      res.status(404).json({ ok: false, error: "invalid_token" });
+      let dbRows = 0;
+      try {
+        dbRows = db.prepare("SELECT COUNT(*) AS c FROM codes").get().c;
+      } catch {
+        /* noop */
+      }
+      console.warn(
+        `[api/scan] invalid_token tokenLen=${token.length} dbRows=${dbRows} host=${req.get("host") || ""}`
+      );
+      res.status(404).json({
+        ok: false,
+        error: "invalid_token",
+        hintAr:
+          "التوكّن داخل الـ QR غير موجود في قاعدة السيرفر الحالية. غالبًا الطباعة من مانيفست/نسخة قديمة، أو لم يُشغَّل npm run seed على Render بعد ضبط PUBLIC_URL. الحل: من Render Shell نفّذ npm run seed ثم أعد طباعة الـ QR من الموقع (أو من الأدمن)، أو امسح كودًا من نفس الموقع وليس نسخة قديمة.",
+      });
       return;
     }
     if (result.outcome === "already") {

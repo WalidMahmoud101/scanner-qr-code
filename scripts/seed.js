@@ -6,7 +6,9 @@ const Database = require("better-sqlite3");
 const QRCode = require("qrcode");
 
 const ROOT = path.join(__dirname, "..");
-const DATA_DIR = path.join(ROOT, "data");
+const DATA_DIR = process.env.DATA_DIR
+  ? path.resolve(process.env.DATA_DIR)
+  : path.join(ROOT, "data");
 const QR_DIR = path.join(ROOT, "public", "qrcodes");
 const DB_PATH = path.join(DATA_DIR, "app.db");
 const COUNT = 170;
@@ -59,6 +61,7 @@ async function writeQrFilesAndManifest(db) {
 }
 
 async function main() {
+  console.log("[seed] DATA_DIR →", DATA_DIR);
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.mkdirSync(QR_DIR, { recursive: true });
 

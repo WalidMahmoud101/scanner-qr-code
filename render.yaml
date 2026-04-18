@@ -6,8 +6,11 @@
 #    (Render يضيف RENDER_EXTERNAL_URL تلقائياً؛ PUBLIC_URL أوضح لو غيّرت الدومين لاحقاً)
 # 3) بعد أول نشر ناجح: من Shell يمكن تشغيل npm run seed (يستخدم PUBLIC_URL من البيئة)
 #
-# تنبيه الخطة المجانية: القرص مؤقت — لو السيرفر نام ممكن تضيع بيانات SQLite.
-#    للإنتاج: قرص دائم (Render Disk) أو PostgreSQL.
+# --- قرص دائم (مدفوع) لـ SQLite ---
+# من الخدمة في Render: Disks → Add Disk → Mount path مثلاً /var/data → حجم 1GB+
+# ثم Environment → أضف DATA_DIR=/var/data (نفس مسار الـ mount بالضبط)
+# أعد نشر الخدمة ثم من Shell: npm run seed
+# كده data/app.db يتخزّن على القرص وما يضيعش مع إعادة التشغيل.
 
 services:
   - type: web
@@ -29,6 +32,9 @@ services:
         value: "0.0.0.0"
       # املأ من Dashboard → Environment (انسخ الرابط من أعلى صفحة الخدمة، بدون / في النهاية)
       - key: PUBLIC_URL
+        sync: false
+      # بعد إضافة قرص دائم (mount مثلاً /var/data): اضبط القيمة نفس الـ mountPath
+      - key: DATA_DIR
         sync: false
       - key: DASHBOARD_USER
         sync: false

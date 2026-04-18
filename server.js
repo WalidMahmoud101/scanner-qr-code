@@ -12,7 +12,11 @@ const QRCode = require("qrcode");
 const selfsigned = require("selfsigned");
 
 const ROOT = __dirname;
-const DB_PATH = path.join(ROOT, "data", "app.db");
+/** SQLite + أي ملفات data؛ على Render مع قرص دائم: اضبط DATA_DIR=/var/data (نفس mountPath للقرص) */
+const DATA_DIR = process.env.DATA_DIR
+  ? path.resolve(process.env.DATA_DIR)
+  : path.join(ROOT, "data");
+const DB_PATH = path.join(DATA_DIR, "app.db");
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
 /** Render terminates TLS at the edge and forwards plain HTTP to PORT — listening with HTTPS here yields 502. */
@@ -644,7 +648,7 @@ function ensureDatabase() {
     return;
   }
   if (process.env.DISABLE_AUTO_SEED === "1") {
-    console.warn("[db] DISABLE_AUTO_SEED=1 — no app.db; automatic seed skipped.");
+    console.warn(`[db] DISABLE_AUTO_SEED=1 — no DB at ${DB_PATH}; automatic seed skipped.`);
     return;
   }
   const publicBase = (
@@ -653,9 +657,7 @@ function ensureDatabase() {
     ""
   ).replace(/\/$/, "");
   if (!publicBase) {
-    console.warn(
-      "[db] Missing data/app.db — run: npm run seed (set PUBLIC_URL for correct QR links)."
-    );
+    console.warn(`[db] Missing DB at ${DB_PATH} — run: npm run seed (set PUBLIC_URL for correct QR links).`);
     return;
   }
   console.log(`[db] No database found; running seed with PUBLIC_URL=${publicBase} …`);

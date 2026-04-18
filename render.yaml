@@ -26,3 +26,8 @@ services:
         value: "0"
       - key: HOST
         value: "0.0.0.0"
+      # املأ القيم من Dashboard → Environment بعد إنشاء الخدمة (أو عند مراجعة الـ Blueprint)
+      - key: DASHBOARD_USER
+        sync: false
+      - key: DASHBOARD_PASS
+        sync: false

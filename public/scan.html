@@ -289,9 +289,16 @@
             } else if (res.body && res.body.error === "invalid_payload") {
               if (window.feedbackScanResult) feedbackScanResult("bad");
               showResult("bad", "لم أستطع قراءة الرمز", "المحتوى المقروء مش رابط التسجيل المتوقع.");
+            } else if (res.body && res.body.error === "no_database") {
+              if (window.feedbackScanResult) feedbackScanResult("bad");
+              showResult(
+                "bad",
+                "قاعدة البيانات غير جاهزة",
+                "لم يُنشَر جدول الأكواد بعد. على السيرفر نفّذ مرة واحدة: npm run seed (مع PUBLIC_URL الصحيح لروابط الـ QR)."
+              );
             } else {
               if (window.feedbackScanResult) feedbackScanResult("bad");
-              showResult("bad", "خطأ", "تعذّر الاتصال بالسيرفر أو قاعدة البيانات غير جاهزة.");
+              showResult("bad", "خطأ", "تعذّر إكمال الطلب. حدّث الصفحة أو جرّب لاحقاً.");
             }
             cooldownUntil = Date.now() + 2800;
           })

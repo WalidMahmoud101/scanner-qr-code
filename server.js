@@ -1,7 +1,7 @@
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 const fs = require("fs");
-const { execFileSync } = require("child_process");
+const { execFileSync, spawnSync } = require("child_process");
 const os = require("os");
 const http = require("http");
 const https = require("https");
@@ -454,6 +454,35 @@ function loadOrCreateDevHttpsCreds() {
   return { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) };
 }
 
+/** If SQLite DB is missing (e.g. fresh Render deploy), seed once using PUBLIC_URL or Render’s public URL. */
+function ensureDatabase() {
+  if (fs.existsSync(DB_PATH)) {
+    return;
+  }
+  const publicBase = (
+    process.env.PUBLIC_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    ""
+  ).replace(/\/$/, "");
+  if (!publicBase) {
+    console.warn(
+      "[db] Missing data/app.db — run: npm run seed (set PUBLIC_URL for correct QR links)."
+    );
+    return;
+  }
+  console.log(`[db] No database found; running seed with PUBLIC_URL=${publicBase} …`);
+  const r = spawnSync(process.execPath, [path.join(ROOT, "scripts", "seed.js")], {
+    cwd: ROOT,
+    env: { ...process.env, PUBLIC_URL: publicBase },
+    stdio: "inherit",
+  });
+  if (r.status !== 0) {
+    console.error("[db] Seed failed; scan/register will not work until seed succeeds.");
+  } else {
+    console.log("[db] Seed completed.");
+  }
+}
+
 function logDashboardHint() {
   const { user, pass } = getDashboardCreds();
   console.log(`[dashboard] مسح QR عام: /scan.html و /r/... بدون كلمة سر.`);
@@ -466,6 +495,8 @@ function logDashboardHint() {
     console.log(`[dashboard] كلمة السر من متغير البيئة DASHBOARD_PASS`);
   }
 }
+
+ensureDatabase();
 
 if (USE_HTTPS) {
   const creds = getHttpsCreds();

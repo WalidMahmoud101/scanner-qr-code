@@ -1,9 +1,10 @@
 # Render Blueprint: https://render.com/docs/blueprint-spec
 # 1) ادفع المشروع على GitHub واربطه من Render → New → Blueprint
-# 2) في لوحة Render أضف Environment (Secret): DASHBOARD_USER, DASHBOARD_PASS
-# 3) بعد أول نشر ناجح: Shell ثم:
-#    PUBLIC_URL="https://اسم-الخدمة.onrender.com" npm run seed
-#    (بدون PUBLIC_URL الروابط في الـ QR تفضل 127.0.0.1)
+# 2) في لوحة Render → Environment أضف:
+#    - PUBLIC_URL = https://اسم-خدمتك.onrender.com (نفس الرابط العام أعلاه؛ مهم لروابط الـ QR والمانيفست)
+#    - DASHBOARD_USER / DASHBOARD_PASS
+#    (Render يضيف RENDER_EXTERNAL_URL تلقائياً؛ PUBLIC_URL أوضح لو غيّرت الدومين لاحقاً)
+# 3) بعد أول نشر ناجح: من Shell يمكن تشغيل npm run seed (يستخدم PUBLIC_URL من البيئة)
 #
 # تنبيه الخطة المجانية: القرص مؤقت — لو السيرفر نام ممكن تضيع بيانات SQLite.
 #    للإنتاج: قرص دائم (Render Disk) أو PostgreSQL.
@@ -26,7 +27,9 @@ services:
         value: "0"
       - key: HOST
         value: "0.0.0.0"
-      # املأ القيم من Dashboard → Environment بعد إنشاء الخدمة (أو عند مراجعة الـ Blueprint)
+      # املأ من Dashboard → Environment (انسخ الرابط من أعلى صفحة الخدمة، بدون / في النهاية)
+      - key: PUBLIC_URL
+        sync: false
       - key: DASHBOARD_USER
         sync: false
       - key: DASHBOARD_PASS

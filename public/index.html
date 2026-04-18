@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QR one-time registration</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="home">
+  <main class="card wide">
+    <h1>QR one-time registration</h1>
+    <p class="lead">
+      There are <strong>170</strong> QR codes. Each link registers on the <strong>first</strong> visit only.
+      A second scan shows <em>Already registered</em>.
+    </p>
+    <p class="lead ar" dir="rtl">
+      يوجد ١٧٠ رمز QR؛ أول مسح يسجّل الزيارة، وأي مسح لاحق يظهر أنه مسجّل مسبقاً.
+    </p>
+    <section class="stats" id="stats">
+      <p>Loading status…</p>
+    </section>
+    <p>
+      <a class="btn" href="/qrcodes-all.zip">تحميل كل الـ QR للآيفون (ZIP)</a>
+      <a class="btn" href="/scan.html">مسح من كاميرا الهاتف</a>
+      <a class="btn" href="/admin.html">Open admin table</a>
+      <a class="btn secondary" href="/manifest.json" download>Download manifest.json</a>
+    </p>
+    <p class="sub" dir="rtl">
+      لو المتصفح المدمج يظهر <strong>ERR_CERT_AUTHORITY_INVALID</strong>: افتح نفس الموقع على <strong>HTTP</strong> بدون شهادة — المنفذ الإضافي يُطبع في الطرفية عند التشغيل (غالباً
+      <code>http://127.0.0.1:3001</code> إذا كان السيرفر على 3000).
+    </p>
+    <p class="sub">
+      الصفحة دي و<strong>الأدمن</strong> و<strong>تحميل ZIP</strong> و<strong>manifest</strong> محميين باسم مستخدم وكلمة سر (يظهران في الطرفية أو ملف <code>.env</code>).
+      صفحة <a href="/scan.html">المسح</a> وروابط التسجيل <code>/r/…</code> بدون كلمة سر للمستخدمين.
+    </p>
+    <p class="sub">
+      After <code>npm run seed</code>, PNG files are in <code>public/qrcodes/</code>.
+      Default <code>npm start</code> uses <strong>HTTPS</strong> (accept the local cert warning once).
+      Set <code>PUBLIC_URL</code> to your real <code>https://…</code> before seeding so printed QRs match your site.
+    </p>
+  </main>
+  <script>
+    fetch("/api/status")
+      .then((r) => {
+        const el = document.getElementById("stats");
+        if (r.status === 401) {
+          el.innerHTML =
+            "<p>حدّث الصفحة وادخل <strong>اسم المستخدم وكلمة السر</strong> للوحة التحكم (يظهران في الطرفية أو ملف <code>.env</code>).</p>";
+          return null;
+        }
+        return r.json().then((d) => ({ el: document.getElementById("stats"), d }));
+      })
+      .then((x) => {
+        if (!x) return;
+        const el = x.el;
+        const d = x.d;
+        if (!d.ok) {
+          el.innerHTML = "<p>Run <code>npm run seed</code> to create the database and QR images.</p>";
+          return;
+        }
+        el.innerHTML =
+          "<p><strong>" +
+          d.used +
+          "</strong> used &middot; <strong>" +
+          d.remaining +
+          "</strong> remaining &middot; <strong>" +
+          d.total +
+          "</strong> total</p>";
+      })
+      .catch(() => {
+        const el = document.getElementById("stats");
+        if (el) el.textContent = "Could not load status.";
+      });
+  </script>
+</body>
+</html>

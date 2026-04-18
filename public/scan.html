@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>مسح QR من الكاميرا</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .scan-wrap { max-width: 28rem; margin: 0 auto; }
+    .scan-wrap h1 { font-size: 1.35rem; }
+    .scan-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0; }
+    .scan-actions .btn { margin: 0; text-align: center; border: none; cursor: pointer; font: inherit; }
+    .scan-actions .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .video-box {
+      position: relative;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: #000;
+      aspect-ratio: 3 / 4;
+      max-height: 55vh;
+    }
+    .video-box video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .video-hint {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      padding: 0.6rem 0.75rem;
+      font-size: 0.85rem;
+      background: linear-gradient(transparent, rgba(0,0,0,0.75));
+      color: #e2e8f0;
+      text-align: center;
+    }
+    .scan-result {
+      margin-top: 1rem;
+      padding: 1rem 1.1rem;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      display: none;
+    }
+    .scan-result.show { display: block; }
+    .scan-result.ok { border-color: rgba(52, 211, 153, 0.5); background: rgba(52, 211, 153, 0.08); }
+    .scan-result.warn { border-color: rgba(251, 191, 36, 0.5); background: rgba(251, 191, 36, 0.08); }
+    .scan-result.bad { border-color: rgba(248, 113, 113, 0.45); background: rgba(248, 113, 113, 0.08); }
+    .scan-result h2 { margin: 0 0 0.35rem; font-size: 1.1rem; }
+    .scan-result p { margin: 0; color: var(--muted); line-height: 1.5; }
+    .scan-result .vib-hint {
+      margin-top: 0.75rem;
+      padding-top: 0.65rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .scan-foot { margin-top: 1rem; font-size: 0.82rem; color: var(--muted); line-height: 1.45; }
+    .scan-foot a { color: #93c5fd; }
+    /* main.card pulse uses global styles in styles.css */
+  </style>
+</head>
+<body class="home">
+  <main class="card scan-wrap">
+    <p style="margin:0 0 0.5rem"><a href="/" style="color:var(--muted)">← الرئيسية</a></p>
+    <h1>مسح QR من الكاميرا</h1>
+    <p class="lead" style="margin:0.5rem 0 0;font-size:0.95rem;color:var(--muted)">
+      شغّل الكاميرا ووجّهها نحو الرمز. أول مرة يتسجّل؛ لو مستخدم قبل كده يظهر «مسجّل مسبقاً».
+    </p>
+
+    <div class="scan-actions">
+      <button type="button" class="btn" id="btnStart">تشغيل الكاميرا</button>
+      <button type="button" class="btn secondary" id="btnStop" disabled>إيقاف</button>
+    </div>
+
+    <div class="video-box" id="videoBox" hidden>
+      <video id="video" playsinline muted></video>
+      <div class="video-hint">ثبّت الرمز داخل الإطار حتى يُقرأ تلقائياً</div>
+    </div>
+
+    <div class="scan-result" id="result" role="status"></div>
+
+    <p class="scan-foot">
+      على <strong>الموبايل</strong> من الشبكة: <code>https://…:3000/scan.html</code> (قد تحتاج قبول شهادة التطوير).
+      لو متصفح البرنامج يعطي <strong>ERR_CERT</strong>: افتح نفس الصفحة على <strong>http://127.0.0.1:3001</strong> (أو المنفذ المذكور في الطرفية) — بدون شهادة؛ الكاميرا على localhost تعمل مع HTTP.
+    </p>
+    <p class="scan-foot" dir="rtl">
+      <strong>الصوت:</strong> ارفع مستوى الوسائط على الهاتف. <strong>الهزاز:</strong> يعمل بقوة على <strong>Chrome / أندرويد</strong>؛
+      <strong>سفاري على الآيفون لا يوفّر هزازاً للمواقع</strong> (قيود Apple) — اعتمد هناك على الصوت + وميض الشاشة.
+    </p>
+  </main>
+
+  <canvas id="canvas" hidden></canvas>
+  <script src="/feedback.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <script>
+    (function () {
+      var video = document.getElementById("video");
+      var canvas = document.getElementById("canvas");
+      var ctx = canvas.getContext("2d", { willReadFrequently: true });
+      var btnStart = document.getElementById("btnStart");
+      var btnStop = document.getElementById("btnStop");
+      var videoBox = document.getElementById("videoBox");
+      var resultEl = document.getElementById("result");
+      var stream = null;
+      var raf = 0;
+      var busy = false;
+      var cooldownUntil = 0;
+      var lastPayload = "";
+      var decodeInFlight = false;
+      var barcodeDetector = null;
+      var frameCounter = 0;
+
+      function showResult(kind, titleAr, bodyAr, hintAr) {
+        resultEl.className = "scan-result show " + kind;
+        var hint =
+          hintAr != null && hintAr !== ""
+            ? "<p class=\"vib-hint\">" + hintAr + "</p>"
+            : "";
+        resultEl.innerHTML = "<h2>" + titleAr + "</h2><p>" + bodyAr + "</p>" + hint;
+      }
+
+      function hideResult() {
+        resultEl.className = "scan-result";
+        resultEl.innerHTML = "";
+      }
+
+      function stop() {
+        if (raf) cancelAnimationFrame(raf);
+        raf = 0;
+        decodeInFlight = false;
+        barcodeDetector = null;
+        if (stream) {
+          stream.getTracks().forEach(function (t) {
+            t.stop();
+          });
+          stream = null;
+        }
+        video.srcObject = null;
+        videoBox.hidden = true;
+        btnStart.disabled = false;
+        btnStop.disabled = true;
+      }
+
+      /** أندرويد: تحليل على صورة أصغر أسرع وأدق من full 4K + تقوية الحواف */
+      function decodeRegionJsQR(sx, sy, sw, sh, maxDim) {
+        var scale = Math.min(maxDim / sw, maxDim / sh, 1);
+        var dw = Math.max(2, Math.floor(sw * scale));
+        var dh = Math.max(2, Math.floor(sh * scale));
+        canvas.width = dw;
+        canvas.height = dh;
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(video, sx, sy, sw, sh, 0, 0, dw, dh);
+        var img = ctx.getImageData(0, 0, dw, dh);
+        var r = window.jsQR(img.data, dw, dh, {
+          inversionAttempts: "attemptBoth",
+        });
+        return r && r.data ? String(r.data).trim() : null;
+      }
+
+      function tryJsQRMultiPass() {
+        var vw = video.videoWidth;
+        var vh = video.videoHeight;
+        if (!vw || !vh) return null;
+        var tries = [
+          { sx: 0, sy: 0, sw: vw, sh: vh, max: 640 },
+          { sx: 0, sy: 0, sw: vw, sh: vh, max: 900 },
+          { sx: Math.floor(vw * 0.12), sy: Math.floor(vh * 0.12), sw: Math.floor(vw * 0.76), sh: Math.floor(vh * 0.76), max: 640 },
+          { sx: Math.floor(vw * 0.18), sy: Math.floor(vh * 0.18), sw: Math.floor(vw * 0.64), sh: Math.floor(vh * 0.64), max: 512 },
+        ];
+        for (var i = 0; i < tries.length; i++) {
+          var t = tries[i];
+          var out = decodeRegionJsQR(t.sx, t.sy, t.sw, t.sh, t.max);
+          if (out) return out;
+        }
+        return null;
+      }
+
+      function tryBarcodeDetectorDecode() {
+        if (!("BarcodeDetector" in window)) return Promise.resolve(null);
+        try {
+          if (!barcodeDetector) {
+            barcodeDetector = new BarcodeDetector({ formats: ["qr_code"] });
+          }
+        } catch (e) {
+          return Promise.resolve(null);
+        }
+        var vw = video.videoWidth;
+        var vh = video.videoHeight;
+        if (!vw || !vh) return Promise.resolve(null);
+        var rw = Math.min(960, vw);
+        var rh = Math.round((vh / vw) * rw);
+        var bmpPromise;
+        try {
+          bmpPromise = createImageBitmap(video, {
+            resizeWidth: rw,
+            resizeHeight: rh,
+            resizeQuality: "high",
+          });
+        } catch (e1) {
+          try {
+            bmpPromise = createImageBitmap(video);
+          } catch (e2) {
+            return Promise.resolve(null);
+          }
+        }
+        return bmpPromise
+          .then(function (bmp) {
+            return barcodeDetector.detect(bmp).then(function (codes) {
+              bmp.close();
+              if (codes && codes.length && codes[0].rawValue) {
+                return String(codes[0].rawValue).trim();
+              }
+              return null;
+            });
+          })
+          .catch(function () {
+            return null;
+          });
+      }
+
+      function tick() {
+        if (!stream) return;
+        if (busy || Date.now() < cooldownUntil) {
+          raf = requestAnimationFrame(tick);
+          return;
+        }
+        if (video.readyState < video.HAVE_ENOUGH_DATA) {
+          raf = requestAnimationFrame(tick);
+          return;
+        }
+        if (decodeInFlight) {
+          raf = requestAnimationFrame(tick);
+          return;
+        }
+        decodeInFlight = true;
+        frameCounter += 1;
+        var tryNative = frameCounter % 3 === 0 && "BarcodeDetector" in window;
+
+        function done() {
+          decodeInFlight = false;
+          raf = requestAnimationFrame(tick);
+        }
+
+        var p = tryNative ? tryBarcodeDetectorDecode() : Promise.resolve(null);
+        p.then(function (d) {
+          if (d) return d;
+          return tryJsQRMultiPass();
+        })
+          .then(function (d) {
+            if (d && d !== lastPayload) {
+              lastPayload = d;
+              submitScan(d);
+            }
+          })
+          .catch(function () {})
+          .finally(done);
+      }
+
+      function submitScan(raw) {
+        busy = true;
+        fetch("/api/scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ raw: raw }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, status: r.status, body: j };
+            });
+          })
+          .then(function (res) {
+            if (res.body && res.body.ok && res.body.status === "registered") {
+              if (window.feedbackScanResult) feedbackScanResult("ok");
+              showResult(
+                "ok",
+                "تم التسجيل",
+                "الرمز رقم #" + res.body.slot + " — أول مرة، تم تسجيله بنجاح.",
+                "استمع لنغمتين صاعدتين، ولاحظ وميض الإطار. الهزاز يعمل غالباً على أندرويد؛ آيفون سفاري غالباً بدون هزاز للمواقع."
+              );
+            } else if (res.body && res.body.ok && res.body.status === "already_registered") {
+              if (window.feedbackScanResult) feedbackScanResult("warn");
+              showResult(
+                "warn",
+                "مسجّل مسبقاً",
+                "الرمز رقم #" + res.body.slot + " — اتسجّل قبل كده، مينفعش يتسجّل تاني.",
+                "نغمة أخفّ من نجاح التسجيل الأول + وميض مختلف."
+              );
+            } else if (res.status === 404 || (res.body && res.body.error === "invalid_token")) {
+              if (window.feedbackScanResult) feedbackScanResult("bad");
+              showResult("bad", "رمز غير معروف", "الـ QR مش من نظامنا أو الرابط غلط.");
+            } else if (res.body && res.body.error === "invalid_payload") {
+              if (window.feedbackScanResult) feedbackScanResult("bad");
+              showResult("bad", "لم أستطع قراءة الرمز", "المحتوى المقروء مش رابط التسجيل المتوقع.");
+            } else {
+              if (window.feedbackScanResult) feedbackScanResult("bad");
+              showResult("bad", "خطأ", "تعذّر الاتصال بالسيرفر أو قاعدة البيانات غير جاهزة.");
+            }
+            cooldownUntil = Date.now() + 2800;
+          })
+          .catch(function () {
+            if (window.feedbackScanResult) feedbackScanResult("bad");
+            showResult("bad", "خطأ شبكة", "تأكد إنك على نفس السيرفر (عنوان الـ IP صحيح).");
+            cooldownUntil = Date.now() + 2800;
+          })
+          .finally(function () {
+            busy = false;
+            window.setTimeout(function () {
+              lastPayload = "";
+            }, 3200);
+          });
+      }
+
+      function cameraApiMissing() {
+        return !navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function";
+      }
+
+      function insecureContextBlocksCamera() {
+        if (typeof window.isSecureContext !== "boolean") return false;
+        if (window.isSecureContext) return false;
+        var h = location.hostname;
+        if (h === "localhost" || h === "127.0.0.1" || h === "[::1]") return false;
+        return true;
+      }
+
+      btnStart.addEventListener("click", function () {
+        hideResult();
+        lastPayload = "";
+        if (insecureContextBlocksCamera() && cameraApiMissing()) {
+          showResult(
+            "bad",
+            "الكاميرا محظورة على HTTP",
+            "افتح نفس الصفحة بـ <strong>https://</strong> (شغّل <code>npm start</code> الافتراضي — السيرفر يستخدم HTTPS). على الهاتف استخدم عنوان الشبكة مثل <code>https://192.168.x.x:3000/scan.html</code> واقبل تحذير الشهادة مرة واحدة."
+          );
+          return;
+        }
+        if (cameraApiMissing()) {
+          showResult(
+            "bad",
+            "المتصفح لا يوفّر واجهة الكاميرا",
+            "جرّب أحدث Chrome أو Edge. إن كنت تفتح الملف كـ file:// افتح الموقع من السيرفر (عنوان https أعلاه)."
+          );
+          return;
+        }
+        btnStart.disabled = true;
+        navigator.mediaDevices
+          .getUserMedia({
+            video: {
+              facingMode: { ideal: "environment" },
+              width: { ideal: 1920, min: 480 },
+              height: { ideal: 1080, min: 480 },
+              frameRate: { ideal: 30, max: 30 },
+            },
+            audio: false,
+          })
+          .then(function (s) {
+            stream = s;
+            video.srcObject = stream;
+            videoBox.hidden = false;
+            btnStop.disabled = false;
+            var track = s.getTracks().filter(function (t) {
+              return t.kind === "video";
+            })[0];
+            if (track && track.applyConstraints) {
+              var caps = track.getCapabilities && track.getCapabilities();
+              if (caps && caps.focusMode && caps.focusMode.indexOf("continuous") !== -1) {
+                track
+                  .applyConstraints({ advanced: [{ focusMode: "continuous" }] })
+                  .catch(function () {});
+              }
+            }
+            return video.play();
+          })
+          .then(function () {
+            if (window.unlockScanAudio) {
+              window.unlockScanAudio();
+            }
+            raf = requestAnimationFrame(tick);
+          })
+          .catch(function () {
+            btnStart.disabled = false;
+            showResult(
+              "bad",
+              "لم يُسمح بالكاميرا",
+              "اسمح بالوصول للكاميرا من إعدادات المتصفح. على iPhone قد تحتاج HTTPS أو فتح الموقع من الماك على نفس الجهاز."
+            );
+          });
+      });
+
+      btnStop.addEventListener("click", function () {
+        stop();
+      });
+
+      window.addEventListener("beforeunload", stop);
+    })();
+  </script>
+</body>
+</html>

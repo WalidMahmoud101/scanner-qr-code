@@ -1,0 +1,25 @@
+{
+  "name": "qr-one-time-register",
+  "version": "1.0.0",
+  "private": true,
+  "description": "170 one-time QR registrations",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "seed": "node scripts/seed.js",
+    "reset-usage": "node scripts/reset-usage.js",
+    "start": "node server.js",
+    "start:http": "USE_HTTPS=0 node server.js",
+    "dev": "node server.js",
+    "zip-qrcodes": "cd public && zip -qr qrcodes-all.zip qrcodes && echo \"Created: public/qrcodes-all.zip\""
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "helmet": "^7.1.0",
+    "qrcode": "^1.5.4",
+    "selfsigned": "^2.4.1"
+  }
+}

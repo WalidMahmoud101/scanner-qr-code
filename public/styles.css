@@ -1,0 +1,169 @@
+:root {
+  --bg: #0f1419;
+  --card: #1a2332;
+  --text: #e7ecf3;
+  --muted: #94a3b8;
+  --border: #2d3a4f;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --bad: #f87171;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+  background: radial-gradient(1200px 600px at 20% 0%, #1e3a5f 0%, transparent 50%),
+    radial-gradient(800px 400px at 100% 100%, #1a3d3d 0%, transparent 45%), var(--bg);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+body.home {
+  align-items: flex-start;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 2rem;
+  max-width: 28rem;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+}
+
+.card.wide {
+  max-width: 52rem;
+}
+
+h1 {
+  margin: 0 0 1rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.msg {
+  font-size: 1.1rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.sub {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-top: 1rem;
+}
+
+.lead {
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.lead.ar {
+  color: var(--muted);
+  margin-top: 0.75rem;
+}
+
+.stats {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  margin: 1.25rem 0;
+}
+
+.btn {
+  display: inline-block;
+  margin: 0.35rem 0.5rem 0.35rem 0;
+  padding: 0.55rem 1rem;
+  background: #3b82f6;
+  color: #fff;
+  text-decoration: none;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.btn.secondary {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+code {
+  background: rgba(0, 0, 0, 0.35);
+  padding: 0.15em 0.4em;
+  border-radius: 6px;
+  font-size: 0.9em;
+}
+
+body.ok .card {
+  border-color: rgba(52, 211, 153, 0.45);
+}
+
+body.ok h1 {
+  color: var(--ok);
+}
+
+body.warn .card {
+  border-color: rgba(251, 191, 36, 0.5);
+}
+
+body.warn h1 {
+  color: var(--warn);
+}
+
+body.bad .card {
+  border-color: rgba(248, 113, 113, 0.45);
+}
+
+body.bad h1 {
+  color: var(--bad);
+}
+
+/* Feedback after scan (vibration + sound + flash) */
+@keyframes feedbackPulseOk {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0);
+  }
+  30% {
+    box-shadow: 0 0 0 6px rgba(52, 211, 153, 0.55), 0 0 40px rgba(52, 211, 153, 0.3);
+  }
+  60% {
+    box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.25);
+  }
+}
+@keyframes feedbackPulseWarn {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0);
+  }
+  30% {
+    box-shadow: 0 0 0 6px rgba(251, 191, 36, 0.5), 0 0 36px rgba(251, 191, 36, 0.25);
+  }
+}
+@keyframes feedbackPulseBad {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(248, 113, 113, 0);
+  }
+  35% {
+    box-shadow: 0 0 0 5px rgba(248, 113, 113, 0.45), 0 0 32px rgba(248, 113, 113, 0.2);
+  }
+}
+main.card.pulse-ok {
+  animation: feedbackPulseOk 0.9s ease-out;
+}
+main.card.pulse-warn {
+  animation: feedbackPulseWarn 0.9s ease-out;
+}
+main.card.pulse-bad {
+  animation: feedbackPulseBad 0.9s ease-out;
+}

@@ -1,0 +1,28 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# 1) ادفع المشروع على GitHub واربطه من Render → New → Blueprint
+# 2) في لوحة Render أضف Environment (Secret): DASHBOARD_USER, DASHBOARD_PASS
+# 3) بعد أول نشر ناجح: Shell ثم:
+#    PUBLIC_URL="https://اسم-الخدمة.onrender.com" npm run seed
+#    (بدون PUBLIC_URL الروابط في الـ QR تفضل 127.0.0.1)
+#
+# تنبيه الخطة المجانية: القرص مؤقت — لو السيرفر نام ممكن تضيع بيانات SQLite.
+#    للإنتاج: قرص دائم (Render Disk) أو PostgreSQL.
+
+services:
+  - type: web
+    name: qr-one-time
+    runtime: node
+    region: frankfurt
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "20.18.1"
+      - key: USE_HTTPS
+        value: "0"
+      - key: HTTP_EXTRA_PORT
+        value: "0"
+      - key: HOST
+        value: "0.0.0.0"

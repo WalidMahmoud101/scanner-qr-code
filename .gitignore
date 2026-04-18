@@ -1,0 +1,6 @@
+node_modules/
+.env
+data/
+public/qrcodes/*.png
+public/qrcodes-all.zip
+.DS_Store

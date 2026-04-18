@@ -37,6 +37,12 @@ function token() {
 /** Always rewrite PNGs + manifest from current DB so files match tokens (even when no new rows). */
 async function writeQrFilesAndManifest(db) {
   fs.mkdirSync(QR_DIR, { recursive: true });
+  /** يمسح أي PNG قديم (مثلاً تنسيق قديم أو عدد slots تغيّر) عشان ما يفضلش ملفان بيض في الآخر */
+  for (const f of fs.readdirSync(QR_DIR)) {
+    if (f.endsWith(".png")) {
+      fs.unlinkSync(path.join(QR_DIR, f));
+    }
+  }
   const all = db.prepare("SELECT slot, token FROM codes ORDER BY slot").all();
   for (const { slot, token: tok } of all) {
     const url = `${PUBLIC_URL}/r/${encodeURIComponent(tok)}`;

@@ -2,6 +2,7 @@
  * Burgundy-style label card (same layout as QR-Burgundy-Labels/generate.js).
  * Used by seed.js to write PNGs under DATA_DIR/qrcodes/001.png …
  */
+const fs = require("fs");
 const QRCode = require("qrcode");
 const sharp = require("sharp");
 
@@ -45,8 +46,9 @@ async function writeBurgundyLabelPng(opts) {
   const displayNo = displayStart + slot - 1;
   const titleSvg = escSvgText(weddingTitle);
   const locSvg = escSvgText(locationEn);
+  const gid = `g${slot}`;
 
-  const qrPng = await QRCode.toBuffer(url, {
+  const qrRaw = await QRCode.toBuffer(url, {
     type: "png",
     width: QR_SIZE,
     margin: 2,
@@ -54,15 +56,22 @@ async function writeBurgundyLabelPng(opts) {
     errorCorrectionLevel: "M",
   });
 
+  /** QR أبعاد ثابتة + RGB بدون شفافية عشان الـ composite ما يطلعش بقع بيضا على بعض السيرفرات */
+  const qrRgb = await sharp(qrRaw)
+    .resize(QR_SIZE, QR_SIZE)
+    .flatten({ background: WINE.qrLight })
+    .png()
+    .toBuffer();
+
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${W}" height="${HEADER_H}" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="g" x1="0%" y1="0%" x2="0%" y2="100%">
+    <linearGradient id="${gid}" x1="0%" y1="0%" x2="0%" y2="100%">
       <stop offset="0%" style="stop-color:${WINE.header};stop-opacity:1" />
       <stop offset="100%" style="stop-color:${WINE.headerEdge};stop-opacity:1" />
     </linearGradient>
   </defs>
-  <rect width="100%" height="100%" fill="url(#g)"/>
+  <rect width="100%" height="100%" fill="url(#${gid})"/>
   <text x="${W / 2}" y="62" text-anchor="middle" fill="#fff5f0"
     font-family="Palatino Linotype, Palatino, Book Antiqua, Georgia, Times New Roman, Times, serif"
     font-size="38" font-weight="700" letter-spacing="0.06em">${displayNo}</text>
@@ -87,10 +96,11 @@ async function writeBurgundyLabelPng(opts) {
     font-size="13.5" font-weight="600" letter-spacing="0.04em">${locSvg}</text>
 </svg>`;
 
-  const headerBuf = Buffer.from(svg);
-  const footerBuf = Buffer.from(footerSvg);
+  const headerPng = await sharp(Buffer.from(svg)).png().toBuffer();
+  const footerPng = await sharp(Buffer.from(footerSvg)).png().toBuffer();
   const totalH = HEADER_H + QR_SIZE + FOOTER_H;
 
+  const tmpPath = `${outPath}.${process.pid}.tmp`;
   await sharp({
     create: {
       width: W,
@@ -100,12 +110,24 @@ async function writeBurgundyLabelPng(opts) {
     },
   })
     .composite([
-      { input: await sharp(headerBuf).png().toBuffer(), top: 0, left: 0 },
-      { input: qrPng, top: HEADER_H, left: 0 },
-      { input: await sharp(footerBuf).png().toBuffer(), top: HEADER_H + QR_SIZE, left: 0 },
+      { input: headerPng, top: 0, left: 0 },
+      { input: qrRgb, top: HEADER_H, left: 0 },
+      { input: footerPng, top: HEADER_H + QR_SIZE, left: 0 },
     ])
     .png()
-    .toFile(outPath);
+    .toFile(tmpPath);
+
+  const st = fs.statSync(tmpPath);
+  if (st.size < 8000) {
+    try {
+      fs.unlinkSync(tmpPath);
+    } catch {
+      /* noop */
+    }
+    throw new Error(`Burgundy label too small (${st.size} bytes) for slot ${slot}`);
+  }
+
+  fs.renameSync(tmpPath, outPath);
 }
 
 module.exports = { writeBurgundyLabelPng };

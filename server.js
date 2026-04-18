@@ -168,6 +168,13 @@ app.get("/qrcodes-all.zip", (_req, res) => {
   res.download(zipPath, "qrcodes-all.zip");
 });
 
+app.use((req, res, next) => {
+  if (req.method === "GET" && (req.path === "/scan.html" || req.path === "/admin.html")) {
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+  }
+  next();
+});
+
 app.use(express.static(path.join(ROOT, "public")));
 
 function html(title, bodyClass, heading, message, sub) {
@@ -200,42 +207,110 @@ function getDb() {
   if (!fs.existsSync(DB_PATH)) {
     return null;
   }
-  return new Database(DB_PATH, { readonly: false });
+  try {
+    return new Database(DB_PATH, { readonly: false });
+  } catch (e) {
+    console.error("[db] open failed:", e);
+    return null;
+  }
+}
+
+function sanitizeScanText(text) {
+  return String(text)
+    .trim()
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/^<+|>+$/g, "")
+    .trim()
+    .replace(/[\s\u00A0]+$/g, "")
+    .replace(/[,，.。』」）)\]}>]+$/g, "");
+}
+
+/**
+ * Extract registration token from scanned QR text (full URL or bare base64url token).
+ */
+function parseTokenFromScanPayload(text) {
+  const t0 = sanitizeScanText(text);
+  if (!t0) {
+    return null;
+  }
+  const urlLike = t0.match(/https?:\/\/[^\s<>]+/i);
+  const t = urlLike ? urlLike[0] : t0;
+  const m = t.match(/\/r\/([^/?#]+)/i);
+  if (m) {
+    let seg = m[1];
+    for (let i = 0; i < 4; i++) {
+      try {
+        const next = decodeURIComponent(seg);
+        if (next === seg) {
+          break;
+        }
+        seg = next;
+      } catch {
+        break;
+      }
+    }
+    return seg || null;
+  }
+  if (/^[A-Za-z0-9_-]+$/.test(t0) && t0.length >= 8) {
+    return t0;
+  }
+  return null;
+}
+
+/** Try DB with primary token and URL-decoding variants (scanner / proxy quirks). */
+function tokenLookupCandidates(primary) {
+  const out = [];
+  const add = (s) => {
+    if (s == null || s === "") {
+      return;
+    }
+    if (!out.includes(s)) {
+      out.push(s);
+    }
+  };
+  add(primary);
+  let p = primary;
+  for (let i = 0; i < 4; i++) {
+    try {
+      const n = decodeURIComponent(p);
+      if (n === p) {
+        break;
+      }
+      add(n);
+      p = n;
+    } catch {
+      break;
+    }
+  }
+  return out;
+}
+
+function findCodeRowByCandidates(db, candidates) {
+  for (const v of candidates) {
+    const row = db.prepare("SELECT slot, token FROM codes WHERE token = ?").get(v);
+    if (row) {
+      return row;
+    }
+  }
+  return null;
 }
 
 /** @returns {{ outcome: "registered", slot: number } | { outcome: "already", slot: number } | { outcome: "not_found" }} */
-function tryRegisterToken(db, rawToken) {
-  const row = db.prepare("SELECT slot FROM codes WHERE token = ?").get(rawToken);
+function tryRegisterToken(db, primaryToken) {
+  const candidates = tokenLookupCandidates(primaryToken);
+  const row = findCodeRowByCandidates(db, candidates);
   if (!row) {
     return { outcome: "not_found" };
   }
+  const dbToken = row.token;
   const now = new Date().toISOString();
   const info = db
     .prepare("UPDATE codes SET used = 1, used_at = ? WHERE token = ? AND used = 0")
-    .run(now, rawToken);
+    .run(now, dbToken);
   if (info.changes === 0) {
     return { outcome: "already", slot: row.slot };
   }
   return { outcome: "registered", slot: row.slot };
-}
-
-function parseTokenFromScanPayload(text) {
-  if (!text || typeof text !== "string") {
-    return null;
-  }
-  const t = text.trim();
-  const m = t.match(/\/r\/([^/?#]+)/);
-  if (m) {
-    try {
-      return decodeURIComponent(m[1]);
-    } catch {
-      return m[1];
-    }
-  }
-  if (/^[A-Za-z0-9_-]+$/.test(t) && t.length >= 8) {
-    return t;
-  }
-  return null;
 }
 
 app.post("/api/scan", (req, res) => {
@@ -276,13 +351,22 @@ app.post("/api/scan", (req, res) => {
       message: "Registered successfully",
       messageAr: "تم التسجيل — أول مرة للرمز ده.",
     });
+  } catch (e) {
+    console.error("[api/scan]", e);
+    if (!res.headersSent) {
+      res.status(500).json({ ok: false, error: "server_error" });
+    }
   } finally {
-    db.close();
+    try {
+      db.close();
+    } catch {
+      /* noop */
+    }
   }
 });
 
 app.get("/r/:token", (req, res) => {
-  const raw = req.params.token;
+  const raw = sanitizeScanText(String(req.params.token || ""));
   const db = getDb();
   if (!db) {
     res.status(503).send(
@@ -457,6 +541,10 @@ function loadOrCreateDevHttpsCreds() {
 /** If SQLite DB is missing (e.g. fresh Render deploy), seed once using PUBLIC_URL or Render’s public URL. */
 function ensureDatabase() {
   if (fs.existsSync(DB_PATH)) {
+    return;
+  }
+  if (process.env.DISABLE_AUTO_SEED === "1") {
+    console.warn("[db] DISABLE_AUTO_SEED=1 — no app.db; automatic seed skipped.");
     return;
   }
   const publicBase = (

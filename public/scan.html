@@ -361,6 +361,10 @@
       }
 
       btnStart.addEventListener("click", function () {
+        /* iOS: unlock Web Audio in the same synchronous turn as the tap — not inside getUserMedia .then() */
+        if (window.unlockScanAudio) {
+          window.unlockScanAudio();
+        }
         hideResult();
         lastPayload = "";
         if (insecureContextBlocksCamera() && cameraApiMissing()) {

@@ -14,9 +14,22 @@
     return audioCtx;
   }
 
+  /**
+   * Must run synchronously inside a user gesture (tap) on iOS Safari — async
+   * continuations after getUserMedia / video.play do not unlock audio.
+   */
   w.unlockScanAudio = function () {
     var ctx = getCtx();
     if (!ctx) return Promise.resolve();
+    try {
+      var buf = ctx.createBuffer(1, 1, ctx.sampleRate);
+      var src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start(0);
+    } catch (e) {
+      /* ignore */
+    }
     return ctx.resume().catch(function () {});
   };
 

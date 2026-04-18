@@ -262,11 +262,29 @@
           body: JSON.stringify({ raw: raw }),
         })
           .then(function (r) {
-            return r.json().then(function (j) {
-              return { ok: r.ok, status: r.status, body: j };
+            var ct = (r.headers.get("content-type") || "").toLowerCase();
+            if (ct.indexOf("application/json") !== -1) {
+              return r.json().then(function (j) {
+                return { ok: r.ok, status: r.status, body: j };
+              });
+            }
+            return r.text().then(function (t) {
+              return { ok: r.ok, status: r.status, body: null, nonJson: t.slice(0, 120) };
             });
           })
           .then(function (res) {
+            if (!res.body) {
+              if (window.feedbackScanResult) feedbackScanResult("bad");
+              showResult(
+                "bad",
+                "خطأ في السيرفر",
+                res.status >= 500
+                  ? "السيرفر غير متاح مؤقتاً أو إعادة تشغيل جارية. جرّب بعد قليل."
+                  : "استجابة غير متوقعة (رمز " + res.status + "). حدّث الصفحة (تأكد من آخر نسخة من الموقع)."
+              );
+              cooldownUntil = Date.now() + 2800;
+              return;
+            }
             if (res.body && res.body.ok && res.body.status === "registered") {
               if (window.feedbackScanResult) feedbackScanResult("ok");
               showResult(
@@ -294,11 +312,20 @@
               showResult(
                 "bad",
                 "قاعدة البيانات غير جاهزة",
-                "لم يُنشَر جدول الأكواد بعد. على السيرفر نفّذ مرة واحدة: npm run seed (مع PUBLIC_URL الصحيح لروابط الـ QR)."
+                "لم يُنشَء ملف الأكواد بعد. من Render: Logs تتأكد إن التشغيل أنشأ قاعدة البيانات، أو من Shell نفّذ: PUBLIC_URL=\"رابط-موقعك\" npm run seed"
               );
+            } else if (res.body && (res.body.error === "server_error" || res.body.error === "db_error")) {
+              if (window.feedbackScanResult) feedbackScanResult("bad");
+              showResult("bad", "خطأ داخلي", "حصل خطأ أثناء التسجيل. حدّث الصفحة أو راجع سجلات السيرفر.");
             } else {
               if (window.feedbackScanResult) feedbackScanResult("bad");
-              showResult("bad", "خطأ", "تعذّر إكمال الطلب. حدّث الصفحة أو جرّب لاحقاً.");
+              showResult(
+                "bad",
+                "خطأ",
+                "تعذّر إكمال الطلب (رمز الخطأ: " +
+                  (res.body && res.body.error ? res.body.error : res.status) +
+                  "). حدّث الصفحة."
+              );
             }
             cooldownUntil = Date.now() + 2800;
           })

@@ -8,6 +8,7 @@
   },
   "scripts": {
     "seed": "node scripts/seed.js",
+    "generate-labels": "node scripts/run-labels-generate.js",
     "reset-usage": "node scripts/reset-usage.js",
     "start": "node server.js",
     "start:http": "USE_HTTPS=0 node server.js",

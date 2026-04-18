@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 const crypto = require("crypto");
 const Database = require("better-sqlite3");
 const QRCode = require("qrcode");
@@ -9,8 +10,21 @@ const DATA_DIR = path.join(ROOT, "data");
 const QR_DIR = path.join(ROOT, "public", "qrcodes");
 const DB_PATH = path.join(DATA_DIR, "app.db");
 const COUNT = 170;
-const PUBLIC_URL = (process.env.PUBLIC_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
+const PUBLIC_URL = (
+  process.env.PUBLIC_URL ||
+  process.env.RENDER_EXTERNAL_URL ||
+  "http://127.0.0.1:3000"
+).replace(/\/$/, "");
+
 const FORCE = process.env.FORCE_SEED === "1";
+
+const publicUrlFromEnv = Boolean(process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL);
+if (!publicUrlFromEnv && PUBLIC_URL.includes("127.0.0.1") && process.env.RENDER !== "true") {
+  console.warn(
+    "[seed] لم يُضبط PUBLIC_URL (ولا RENDER_EXTERNAL_URL) — روابط الـ QR تستخدم http://127.0.0.1:3000.\n" +
+      "  أضف في ملف .env: PUBLIC_URL=https://اسم-خدمتك.onrender.com"
+  );
+}
 
 function token() {
   return crypto.randomBytes(16).toString("base64url");

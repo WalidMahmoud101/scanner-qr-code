@@ -14,10 +14,14 @@ const ROOT = __dirname;
 const DB_PATH = path.join(ROOT, "data", "app.db");
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
-const USE_HTTPS = process.env.USE_HTTPS !== "0";
+/** Render terminates TLS at the edge and forwards plain HTTP to PORT — listening with HTTPS here yields 502. */
+const ON_RENDER = process.env.RENDER === "true";
+const USE_HTTPS = !ON_RENDER && process.env.USE_HTTPS !== "0";
 /** When HTTPS is on: extra HTTP port without TLS (Cursor / ERR_CERT). Set HTTP_EXTRA_PORT=0 to disable. */
 const HTTP_EXTRA_PORT =
-  process.env.HTTP_EXTRA_PORT === "0" ? null : Number(process.env.HTTP_EXTRA_PORT) || PORT + 1;
+  process.env.HTTP_EXTRA_PORT === "0" || ON_RENDER
+    ? null
+    : Number(process.env.HTTP_EXTRA_PORT) || PORT + 1;
 
 function getDashboardCreds() {
   return {

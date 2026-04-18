@@ -3,7 +3,7 @@ const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 const crypto = require("crypto");
 const Database = require("better-sqlite3");
-const QRCode = require("qrcode");
+const { writeBurgundyLabelPng } = require("./lib/burgundy-label");
 
 const ROOT = path.join(__dirname, "..");
 const DATA_DIR = process.env.DATA_DIR
@@ -41,12 +41,7 @@ async function writeQrFilesAndManifest(db) {
   for (const { slot, token: tok } of all) {
     const url = `${PUBLIC_URL}/r/${encodeURIComponent(tok)}`;
     const out = path.join(QR_DIR, `${String(slot).padStart(3, "0")}.png`);
-    await QRCode.toFile(out, url, {
-      type: "png",
-      width: 512,
-      margin: 2,
-      errorCorrectionLevel: "M",
-    });
+    await writeBurgundyLabelPng({ url, slot, outPath: out });
   }
   const manifest = all.map(({ slot, token: tok }) => ({
     slot,

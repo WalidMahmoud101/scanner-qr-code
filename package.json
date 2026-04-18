@@ -13,7 +13,7 @@
     "start": "node server.js",
     "start:http": "USE_HTTPS=0 node server.js",
     "dev": "node server.js",
-    "zip-qrcodes": "cd public && zip -qr qrcodes-all.zip qrcodes && echo \"Created: public/qrcodes-all.zip\""
+    "zip-qrcodes": "node scripts/zip-qrcodes.js"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",
@@ -21,6 +21,7 @@
     "express": "^4.21.2",
     "helmet": "^7.1.0",
     "qrcode": "^1.5.4",
-    "selfsigned": "^2.4.1"
+    "selfsigned": "^2.4.1",
+    "sharp": "^0.33.5"
   }
 }

@@ -81,10 +81,6 @@
 
     <div class="scan-result" id="result" role="status"></div>
 
-    <p class="scan-foot">
-      على <strong>الموبايل</strong> من الشبكة: <code>https://…:3000/scan.html</code> (قد تحتاج قبول شهادة التطوير).
-      لو متصفح البرنامج يعطي <strong>ERR_CERT</strong>: افتح نفس الصفحة على <strong>http://127.0.0.1:3001</strong> (أو المنفذ المذكور في الطرفية) — بدون شهادة؛ الكاميرا على localhost تعمل مع HTTP.
-    </p>
     <p class="scan-foot" dir="rtl">
       <strong>الصوت:</strong> ارفع مستوى الوسائط على الهاتف. <strong>الهزاز:</strong> يعمل بقوة على <strong>Chrome / أندرويد</strong>؛
       <strong>سفاري على الآيفون لا يوفّر هزازاً للمواقع</strong> (قيود Apple) — اعتمد هناك على الصوت + وميض الشاشة.
@@ -330,8 +326,8 @@
         if (insecureContextBlocksCamera() && cameraApiMissing()) {
           showResult(
             "bad",
-            "الكاميرا محظورة على HTTP",
-            "افتح نفس الصفحة بـ <strong>https://</strong> (شغّل <code>npm start</code> الافتراضي — السيرفر يستخدم HTTPS). على الهاتف استخدم عنوان الشبكة مثل <code>https://192.168.x.x:3000/scan.html</code> واقبل تحذير الشهادة مرة واحدة."
+            "الكاميرا غير متاحة",
+            "افتح الصفحة عبر <strong>https://</strong> (اتصال آمن) حتى تسمح المتصفحات بالكاميرا."
           );
           return;
         }
@@ -339,7 +335,7 @@
           showResult(
             "bad",
             "المتصفح لا يوفّر واجهة الكاميرا",
-            "جرّب أحدث Chrome أو Edge. إن كنت تفتح الملف كـ file:// افتح الموقع من السيرفر (عنوان https أعلاه)."
+            "جرّب أحدث Chrome أو Edge. لا تفتح الصفحة كملف محلي (<code>file://</code>) — افتحها من عنوان الموقع على السيرفر."
           );
           return;
         }
@@ -383,7 +379,7 @@
             showResult(
               "bad",
               "لم يُسمح بالكاميرا",
-              "اسمح بالوصول للكاميرا من إعدادات المتصفح. على iPhone قد تحتاج HTTPS أو فتح الموقع من الماك على نفس الجهاز."
+              "اسمح بالوصول للكاميرا من إعدادات المتصفح أو النظام."
             );
           });
       });

@@ -4,6 +4,10 @@
  */
 (function (w) {
   var audioCtx = null;
+  var ua = (w.navigator && w.navigator.userAgent) || "";
+  var isLikelyIOS =
+    /iPhone|iPad|iPod/i.test(ua) ||
+    (w.navigator.platform === "MacIntel" && w.navigator.maxTouchPoints > 1);
 
   function getCtx() {
     if (!audioCtx) {
@@ -69,16 +73,15 @@
   }
 
   function buzzPattern(arr) {
+    if (typeof w.navigator.vibrate !== "function") return;
     function fire() {
       try {
-        if (!w.navigator.vibrate) return;
         w.navigator.vibrate(arr);
       } catch (e) {
         /* ignore */
       }
     }
     fire();
-    /* تكرار ثانٍ بعد ما يخلص النمط الأول (ما نستدعيش vibrate بسرعة عشان ما يلغيش بعض) */
     var pause = vibrateSumMs(arr) + 180;
     w.setTimeout(fire, pause);
   }
@@ -128,5 +131,11 @@
     }
     beep(kind);
     visualPulse(kind);
+    /* سفاري لا يدعم vibrate للمواقع — نكرّر وميض الإطار ليكون بديلاً واضحاً لو الصوت خافت */
+    if (isLikelyIOS) {
+      w.setTimeout(function () {
+        visualPulse(kind);
+      }, 400);
+    }
   };
 })(window);

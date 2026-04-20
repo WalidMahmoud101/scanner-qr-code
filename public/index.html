@@ -10,11 +10,11 @@
   <main class="card wide">
     <h1>QR one-time registration</h1>
     <p class="lead">
-      There are <strong>170</strong> QR codes. Each link registers on the <strong>first</strong> visit only.
+      There are <strong>500</strong> QR codes. Each link registers on the <strong>first</strong> visit only.
       A second scan shows <em>Already registered</em>.
     </p>
     <p class="lead ar" dir="rtl">
-      يوجد ١٧٠ رمز QR؛ أول مسح يسجّل الزيارة، وأي مسح لاحق يظهر أنه مسجّل مسبقاً.
+      يوجد ٥٠٠ رمز QR؛ أول مسح يسجّل الزيارة، وأي مسح لاحق يظهر أنه مسجّل مسبقاً.
     </p>
     <section class="stats" id="stats">
       <p>Loading status…</p>
@@ -46,6 +46,15 @@
             "<p>لم تُجهَّز الأكواد بعد. يُنفَّذ الإعداد من السيرفر عند الحاجة (<code>npm run seed</code>).</p>";
           return;
         }
+        var pngN = d.qrPngCount != null ? d.qrPngCount : "—";
+        var warn =
+          d.imagesMatchDb === false
+            ? '<p class="sub" dir="rtl" style="color:#b45309;margin-top:0.65rem;line-height:1.5">عدد ملفات الصور داخل الـ ZIP وقت التحميل يطابق عدد ملفات <code>.png</code> على السيرفر (<strong>' +
+              pngN +
+              '</strong>) وليس بالضرورة عدد الأكواد في القاعدة (<strong>' +
+              d.total +
+              '</strong>). لو الرقمين مختلفين، شغّل من Shell على Render: <code>npm run seed</code> ثم حمّل الـ ZIP من جديد.</p>'
+            : "";
         el.innerHTML =
           "<p><strong>" +
           d.used +
@@ -53,7 +62,10 @@
           d.remaining +
           "</strong> remaining &middot; <strong>" +
           d.total +
-          "</strong> total</p>";
+          "</strong> codes in DB &middot; <strong>" +
+          pngN +
+          "</strong> QR PNG files (what goes into the ZIP)</p>" +
+          warn;
       })
       .catch(() => {
         const el = document.getElementById("stats");

@@ -2,7 +2,7 @@
   "name": "qr-one-time-register",
   "version": "1.0.0",
   "private": true,
-  "description": "170 one-time QR registrations",
+  "description": "500 one-time QR registrations (SEED_CODE_COUNT)",
   "engines": {
     "node": ">=20"
   },

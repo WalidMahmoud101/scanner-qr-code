@@ -162,6 +162,19 @@ app.get("/qrcodes-all.zip", (_req, res) => {
     res.status(404).type("text/plain").send("No PNGs in data qrcodes folder — run npm run seed.");
     return;
   }
+  const dbZip = getDb();
+  if (dbZip) {
+    try {
+      const dbTotal = dbZip.prepare("SELECT COUNT(*) AS c FROM codes").get().c;
+      if (dbTotal !== pngs.length) {
+        console.warn(
+          `[qrcodes-all.zip] mismatch: ${pngs.length} PNG files vs ${dbTotal} DB rows — ZIP may be incomplete; run npm run seed on the server`
+        );
+      }
+    } finally {
+      dbZip.close();
+    }
+  }
   try {
     execFileSync("zip", ["-qr", zipPath, "qrcodes"], {
       cwd: DATA_DIR,
@@ -202,7 +215,7 @@ app.use(express.static(path.join(ROOT, "public")));
 function html(title, bodyClass, heading, message, sub) {
   const vibHintAr =
     bodyClass === "ok" || bodyClass === "warn"
-      ? `<p class="sub" dir="rtl" style="margin-top:0.75rem;font-size:0.88rem;line-height:1.45">ستسمع نغمتين قصيرتين (أو اهتزازاً على أندرويد)، ويومض الإطار — سفاري الآيفون لا يدعم هزاز الويب عادةً.</p>`
+      ? `<p class="sub" dir="rtl" style="margin-top:0.75rem;font-size:0.88rem;line-height:1.45">أندرويد: نغمة + اهتزاز. آيفون / سفاري: نغمة (يفضّل تشغيل المسح من زر الكاميرا أولاً) + وميض الإطار مرتين — لا يوجد هزاز للمواقع (قيود Apple).</p>`
       : "";
   const vibScript = `<script src="/feedback.js"></script><script>(function(){var m=document.body.className.match(/\\b(ok|warn|bad)\\b/);if(m&&window.feedbackScanResult)window.feedbackScanResult(m[1]);})();<\/script>`;
   return `<!DOCTYPE html>
@@ -486,7 +499,22 @@ app.get("/api/status", (_req, res) => {
   try {
     const total = db.prepare("SELECT COUNT(*) AS c FROM codes").get().c;
     const used = db.prepare("SELECT COUNT(*) AS c FROM codes WHERE used = 1").get().c;
-    res.json({ ok: true, total, used, remaining: total - used });
+    let qrPngCount = 0;
+    try {
+      if (fs.existsSync(QR_CODES_DIR)) {
+        qrPngCount = fs.readdirSync(QR_CODES_DIR).filter((f) => f.endsWith(".png")).length;
+      }
+    } catch {
+      qrPngCount = 0;
+    }
+    res.json({
+      ok: true,
+      total,
+      used,
+      remaining: total - used,
+      qrPngCount,
+      imagesMatchDb: qrPngCount === total,
+    });
   } finally {
     db.close();
   }

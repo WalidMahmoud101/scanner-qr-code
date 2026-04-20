@@ -13,7 +13,12 @@ const DATA_DIR = process.env.DATA_DIR
 const QR_DIR = path.join(DATA_DIR, "qrcodes");
 const MANIFEST_PATH = path.join(DATA_DIR, "manifest.json");
 const DB_PATH = path.join(DATA_DIR, "app.db");
-const COUNT = 170;
+/** عدد أكواد QR (يمكن تغييره من البيئة دون تعديل الكود) */
+const COUNT = (() => {
+  const n = Number.parseInt(process.env.SEED_CODE_COUNT || "500", 10);
+  if (!Number.isFinite(n) || n < 1) return 500;
+  return Math.min(99999, n);
+})();
 const PUBLIC_URL = (
   process.env.PUBLIC_URL ||
   process.env.RENDER_EXTERNAL_URL ||
@@ -60,7 +65,7 @@ async function writeQrFilesAndManifest(db) {
 }
 
 async function main() {
-  console.log("[seed] DATA_DIR →", DATA_DIR);
+  console.log("[seed] DATA_DIR →", DATA_DIR, "| SEED_CODE_COUNT →", COUNT);
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.mkdirSync(QR_DIR, { recursive: true });
 

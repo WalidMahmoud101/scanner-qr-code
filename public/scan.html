@@ -82,8 +82,8 @@
     <div class="scan-result" id="result" role="status"></div>
 
     <p class="scan-foot" dir="rtl">
-      <strong>الصوت:</strong> ارفع مستوى الوسائط على الهاتف. <strong>الهزاز:</strong> يعمل بقوة على <strong>Chrome / أندرويد</strong>؛
-      <strong>سفاري على الآيفون لا يوفّر هزازاً للمواقع</strong> (قيود Apple) — اعتمد هناك على الصوت + وميض الشاشة.
+      <strong>أندرويد / Chrome:</strong> صوت + هزاز. <strong>آيفون / Safari:</strong> لا يوجد هزاز للمواقع (قيود Apple) —
+      يُفعَّل صوت المسح بعد لمس «تشغيل الكاميرا»، ويُكرَّر وميض الإطار مرتين عند النتيجة ليكون واضحاً حتى لو الصوت منخفضاً.
     </p>
   </main>
 
@@ -107,6 +107,38 @@
       var decodeInFlight = false;
       var barcodeDetector = null;
       var frameCounter = 0;
+      var vfcHandle = null;
+      var ua = navigator.userAgent || "";
+      var isLikelyIOS =
+        /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+      function cancelDecodeLoop() {
+        if (vfcHandle != null && typeof video.cancelVideoFrameCallback === "function") {
+          try {
+            video.cancelVideoFrameCallback(vfcHandle);
+          } catch (e1) {
+            /* ignore */
+          }
+          vfcHandle = null;
+        }
+        if (raf) {
+          cancelAnimationFrame(raf);
+          raf = 0;
+        }
+      }
+
+      /** مزامنة مع إطار الفيديو — أقل تكراراً وبطء من requestAnimationFrame على كثير من الأجهزة */
+      function scheduleDecodeLoop() {
+        if (!stream) return;
+        if (typeof video.requestVideoFrameCallback === "function") {
+          vfcHandle = video.requestVideoFrameCallback(function () {
+            vfcHandle = null;
+            tick();
+          });
+        } else {
+          raf = requestAnimationFrame(tick);
+        }
+      }
 
       function showResult(kind, titleAr, bodyAr, hintAr) {
         resultEl.className = "scan-result show " + kind;
@@ -123,8 +155,7 @@
       }
 
       function stop() {
-        if (raf) cancelAnimationFrame(raf);
-        raf = 0;
+        cancelDecodeLoop();
         decodeInFlight = false;
         barcodeDetector = null;
         if (stream) {
@@ -159,12 +190,18 @@
         var vw = video.videoWidth;
         var vh = video.videoHeight;
         if (!vw || !vh) return null;
-        var tries = [
-          { sx: 0, sy: 0, sw: vw, sh: vh, max: 640 },
-          { sx: 0, sy: 0, sw: vw, sh: vh, max: 900 },
-          { sx: Math.floor(vw * 0.12), sy: Math.floor(vh * 0.12), sw: Math.floor(vw * 0.76), sh: Math.floor(vh * 0.76), max: 640 },
-          { sx: Math.floor(vw * 0.18), sy: Math.floor(vh * 0.18), sw: Math.floor(vw * 0.64), sh: Math.floor(vh * 0.64), max: 512 },
-        ];
+        var tries = isLikelyIOS
+          ? [
+              { sx: 0, sy: 0, sw: vw, sh: vh, max: 560 },
+              { sx: 0, sy: 0, sw: vw, sh: vh, max: 820 },
+              { sx: Math.floor(vw * 0.12), sy: Math.floor(vh * 0.12), sw: Math.floor(vw * 0.76), sh: Math.floor(vh * 0.76), max: 640 },
+            ]
+          : [
+              { sx: 0, sy: 0, sw: vw, sh: vh, max: 640 },
+              { sx: 0, sy: 0, sw: vw, sh: vh, max: 900 },
+              { sx: Math.floor(vw * 0.12), sy: Math.floor(vh * 0.12), sw: Math.floor(vw * 0.76), sh: Math.floor(vh * 0.76), max: 640 },
+              { sx: Math.floor(vw * 0.18), sy: Math.floor(vh * 0.18), sw: Math.floor(vw * 0.64), sh: Math.floor(vh * 0.64), max: 512 },
+            ];
         for (var i = 0; i < tries.length; i++) {
           var t = tries[i];
           var out = decodeRegionJsQR(t.sx, t.sy, t.sw, t.sh, t.max);
@@ -232,11 +269,13 @@
         }
         decodeInFlight = true;
         frameCounter += 1;
-        var tryNative = frameCounter % 3 === 0 && "BarcodeDetector" in window;
+        /* أندرويد/كروم: BarcodeDetector كل إطار تقريباً (أسرع). iOS: أقل تكراراً لتخفيف الحرارة */
+        var tryNative =
+          "BarcodeDetector" in window && (isLikelyIOS ? frameCounter % 2 === 0 : true);
 
         function done() {
           decodeInFlight = false;
-          raf = requestAnimationFrame(tick);
+          scheduleDecodeLoop();
         }
 
         var p = tryNative ? tryBarcodeDetectorDecode() : Promise.resolve(null);
@@ -282,7 +321,7 @@
                   ? "السيرفر غير متاح مؤقتاً أو إعادة تشغيل جارية. جرّب بعد قليل."
                   : "استجابة غير متوقعة (رمز " + res.status + "). حدّث الصفحة (تأكد من آخر نسخة من الموقع)."
               );
-              cooldownUntil = Date.now() + 2800;
+              cooldownUntil = Date.now() + 2400;
               return;
             }
             if (res.body && res.body.ok && res.body.status === "registered") {
@@ -291,9 +330,12 @@
                 "ok",
                 "تم التسجيل",
                 "الرمز رقم #" + res.body.slot + " — أول مرة، تم تسجيله بنجاح.",
-                "استمع لنغمتين صاعدتين، ولاحظ وميض الإطار. الهزاز يعمل غالباً على أندرويد؛ آيفون سفاري غالباً بدون هزاز للمواقع."
+                "نغمة نجاح + وميض الإطار (ومرتين على آيفون). الهزاز يعمل على أندرويد؛ سفاري لا يدعم هزاز المواقع."
               );
-            } else if (res.body && res.body.ok && res.body.status === "already_registered") {
+              cooldownUntil = Date.now() + 900;
+              return;
+            }
+            if (res.body && res.body.ok && res.body.status === "already_registered") {
               if (window.feedbackScanResult) feedbackScanResult("warn");
               showResult(
                 "warn",
@@ -301,7 +343,10 @@
                 "الرمز رقم #" + res.body.slot + " — اتسجّل قبل كده، مينفعش يتسجّل تاني.",
                 "نغمة أخفّ من نجاح التسجيل الأول + وميض مختلف."
               );
-            } else if (res.status === 404 || (res.body && res.body.error === "invalid_token")) {
+              cooldownUntil = Date.now() + 900;
+              return;
+            }
+            if (res.status === 404 || (res.body && res.body.error === "invalid_token")) {
               if (window.feedbackScanResult) feedbackScanResult("bad");
               (function () {
                 var ar =
@@ -333,18 +378,18 @@
                   "). حدّث الصفحة."
               );
             }
-            cooldownUntil = Date.now() + 2800;
+            cooldownUntil = Date.now() + 2200;
           })
           .catch(function () {
             if (window.feedbackScanResult) feedbackScanResult("bad");
             showResult("bad", "خطأ شبكة", "تأكد إنك على نفس السيرفر (عنوان الـ IP صحيح).");
-            cooldownUntil = Date.now() + 2800;
+            cooldownUntil = Date.now() + 2400;
           })
           .finally(function () {
             busy = false;
             window.setTimeout(function () {
               lastPayload = "";
-            }, 3200);
+            }, 1600);
           });
       }
 
@@ -360,8 +405,16 @@
         return true;
       }
 
+      btnStart.addEventListener(
+        "touchstart",
+        function () {
+          if (window.unlockScanAudio) window.unlockScanAudio();
+        },
+        { passive: true }
+      );
+
       btnStart.addEventListener("click", function () {
-        /* iOS: unlock Web Audio in the same synchronous turn as the tap — not inside getUserMedia .then() */
+        /* iOS: unlock Web Audio في نفس دورة اللمس — ليس داخل سلسلة getUserMedia */
         if (window.unlockScanAudio) {
           window.unlockScanAudio();
         }
@@ -384,12 +437,13 @@
           return;
         }
         btnStart.disabled = true;
+        var narrowMobile = /Android|iPhone|iPad|iPod/i.test(ua);
         navigator.mediaDevices
           .getUserMedia({
             video: {
               facingMode: { ideal: "environment" },
-              width: { ideal: 1920, min: 480 },
-              height: { ideal: 1080, min: 480 },
+              width: narrowMobile ? { ideal: 1280, min: 480 } : { ideal: 1920, min: 480 },
+              height: narrowMobile ? { ideal: 720, min: 480 } : { ideal: 1080, min: 480 },
               frameRate: { ideal: 30, max: 30 },
             },
             audio: false,
@@ -416,7 +470,7 @@
             if (window.unlockScanAudio) {
               window.unlockScanAudio();
             }
-            raf = requestAnimationFrame(tick);
+            scheduleDecodeLoop();
           })
           .catch(function () {
             btnStart.disabled = false;

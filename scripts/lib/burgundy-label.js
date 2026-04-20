@@ -33,7 +33,8 @@ function readLabelEnv() {
     Number.parseInt(process.env.LABEL_DISPLAY_START || "4410", 10) || 4410
   );
   const weddingTitle = process.env.LABEL_WEDDING_TITLE || "FAISAL & TALEED'S WEDDING";
-  const locationEn = process.env.LABEL_LOCATION_EN || "Sofitel Cairo Downtown Nile";
+  const locationEn =
+    process.env.LABEL_LOCATION_EN || "Sofitel Cairo Downtown Nile - Cairo";
   return { displayStart, weddingTitle, locationEn };
 }
 
@@ -75,7 +76,12 @@ async function writeBurgundyLabelPng(opts) {
   <text x="${W / 2}" y="62" text-anchor="middle" fill="#fff5f0"
     font-family="Palatino Linotype, Palatino, Book Antiqua, Georgia, Times New Roman, Times, serif"
     font-size="38" font-weight="700" letter-spacing="0.06em">${displayNo}</text>
-  <line x1="56" y1="92" x2="${W - 56}" y2="92" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <!-- فاصل: قوسان منحنيان (يسار / يمين) + خط مركزي خفيف -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 32 101 Q 52 92 32 83" stroke="rgba(255,255,255,0.42)" stroke-width="1.55"/>
+    <path d="M 488 83 Q 468 92 488 101" stroke="rgba(255,255,255,0.42)" stroke-width="1.55"/>
+    <line x1="86" y1="92" x2="434" y2="92" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+  </g>
   <text x="${W / 2}" y="130" text-anchor="middle" fill="#fffefb"
     font-family="Palatino Linotype, Palatino, Book Antiqua, Georgia, Times New Roman, Times, serif"
     font-size="17.5" font-weight="600" letter-spacing="0.14em">${titleSvg}</text>
@@ -87,13 +93,13 @@ async function writeBurgundyLabelPng(opts) {
   <line x1="44" y1="0" x2="${W - 44}" y2="0" stroke="#5c1324" stroke-opacity="0.22" stroke-width="1.5"/>
   <text x="${W / 2}" y="0" text-anchor="middle" fill="#3d0c18"
     font-family="Geeza Pro, Baghdad, 'Noto Naskh Arabic', 'Damascus', Tahoma, Arial, sans-serif"
-    font-size="15.2" font-weight="500" xml:lang="ar" direction="rtl">
+    font-size="15.2" font-weight="700" xml:lang="ar" direction="rtl">
     <tspan x="${W / 2}" dy="34">يُستخدَم هذا الرمز لمرّةٍ واحدةٍ فقط،</tspan>
     <tspan x="${W / 2}" dy="1.55em">ومن قِبل شخصٍ واحدٍ.</tspan>
   </text>
   <text x="${W / 2}" y="112" text-anchor="middle" fill="#5c1324"
     font-family="Palatino Linotype, Palatino, Georgia, 'Times New Roman', Times, serif"
-    font-size="13.5" font-weight="600" letter-spacing="0.04em">${locSvg}</text>
+    font-size="13.5" font-weight="700" letter-spacing="0.04em">${locSvg}</text>
 </svg>`;
 
   const headerPng = await sharp(Buffer.from(svg)).png().toBuffer();

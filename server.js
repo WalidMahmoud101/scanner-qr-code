@@ -238,12 +238,27 @@ function html(title, bodyClass, heading, message, sub) {
 </html>`;
 }
 
+function ensureCodesSchema(db) {
+  try {
+    const cols = db.prepare("PRAGMA table_info(codes)").all();
+    const names = new Set(cols.map((c) => c.name));
+    if (!names.has("wc_away_at")) {
+      db.exec("ALTER TABLE codes ADD COLUMN wc_away_at TEXT");
+      console.log("[db] migrated codes: added wc_away_at (WC in/out from scan page)");
+    }
+  } catch (e) {
+    console.error("[db] ensureCodesSchema:", e);
+  }
+}
+
 function getDb() {
   if (!fs.existsSync(DB_PATH)) {
     return null;
   }
   try {
-    return new Database(DB_PATH, { readonly: false });
+    const db = new Database(DB_PATH, { readonly: false });
+    ensureCodesSchema(db);
+    return db;
   } catch (e) {
     console.error("[db] open failed:", e);
     return null;
@@ -344,6 +359,53 @@ function findCodeRowByCandidates(db, candidates) {
   return null;
 }
 
+function findCodeRowWithWc(db, primaryToken) {
+  const candidates = tokenLookupCandidates(primaryToken);
+  for (const v of candidates) {
+    const row = db
+      .prepare(
+        "SELECT slot, token, used, used_at, wc_away_at FROM codes WHERE token = ?"
+      )
+      .get(v);
+    if (row) {
+      return row;
+    }
+  }
+  return null;
+}
+
+/** مسار الحمام: نفس الـ QR بعد التسجيل — يُمسح من صفحة scan.html فقط (intent). */
+function tryWcEnter(db, primaryToken) {
+  const row = findCodeRowWithWc(db, primaryToken);
+  if (!row) {
+    return { outcome: "not_found" };
+  }
+  if (!row.used) {
+    return { outcome: "must_register_first", slot: row.slot };
+  }
+  if (row.wc_away_at) {
+    return { outcome: "wc_already_away", slot: row.slot };
+  }
+  const now = new Date().toISOString();
+  db.prepare("UPDATE codes SET wc_away_at = ? WHERE token = ?").run(now, row.token);
+  return { outcome: "wc_entered", slot: row.slot };
+}
+
+function tryWcLeave(db, primaryToken) {
+  const row = findCodeRowWithWc(db, primaryToken);
+  if (!row) {
+    return { outcome: "not_found" };
+  }
+  if (!row.used) {
+    return { outcome: "must_register_first", slot: row.slot };
+  }
+  if (!row.wc_away_at) {
+    return { outcome: "wc_already_inside", slot: row.slot };
+  }
+  db.prepare("UPDATE codes SET wc_away_at = NULL WHERE token = ?").run(row.token);
+  return { outcome: "wc_returned", slot: row.slot };
+}
+
 /** @returns {{ outcome: "registered", slot: number } | { outcome: "already", slot: number } | { outcome: "not_found" }} */
 function tryRegisterToken(db, primaryToken) {
   const candidates = tokenLookupCandidates(primaryToken);
@@ -371,6 +433,10 @@ app.post("/api/scan", (req, res) => {
     return;
   }
 
+  const intentRaw = req.body && req.body.intent;
+  const intent =
+    intentRaw === "wc_enter" || intentRaw === "wc_leave" ? String(intentRaw) : "register";
+
   const db = getDb();
   if (!db) {
     res.status(503).json({ ok: false, error: "no_database" });
@@ -378,6 +444,106 @@ app.post("/api/scan", (req, res) => {
   }
 
   try {
+    if (intent === "wc_enter") {
+      const wc = tryWcEnter(db, token);
+      if (wc.outcome === "not_found") {
+        let dbRows = 0;
+        try {
+          dbRows = db.prepare("SELECT COUNT(*) AS c FROM codes").get().c;
+        } catch {
+          /* noop */
+        }
+        console.warn(
+          `[api/scan] wc_enter invalid_token tokenLen=${token.length} dbRows=${dbRows} host=${req.get("host") || ""}`
+        );
+        res.status(404).json({
+          ok: false,
+          error: "invalid_token",
+          hintAr:
+            "التوكن في الـ QR مش في قاعدة السيرفر الحالية. من Render Shell شغّل: npm run seed ثم امسح QR من الأدمن أو حمّل ZIP من الموقع (طباعة قديمة = غالبًا غلط).",
+          hintEn:
+            "This QR token is not in the live database. In Render Shell run: npm run seed — then scan a QR from Admin or re-download the ZIP. Old prints often mismatch after a new seed.",
+        });
+        return;
+      }
+      if (wc.outcome === "must_register_first") {
+        res.status(200).json({
+          ok: false,
+          error: "must_register_first",
+          slot: wc.slot,
+          messageAr:
+            "الرمز لم يُسجَّل دخوله بعد. افتح رابط الـ QR من المتصفح مرة واحدة أولاً (أو اختر «تسجيل دخول» هنا ثم امسح)، ثم استخدم «ذهاب للحمام».",
+        });
+        return;
+      }
+      if (wc.outcome === "wc_already_away") {
+        res.json({
+          ok: true,
+          status: "wc_already_away",
+          slot: wc.slot,
+          messageAr: "مسجّل بالفعل كمتوجّه للحمام. عند الرجوع اختر «رجوع من الحمام».",
+        });
+        return;
+      }
+      res.json({
+        ok: true,
+        status: "wc_entered",
+        slot: wc.slot,
+        messageAr: "تم تسجيل الذهاب للحمام (WC). عند العودة امسح نفس الرمز مع «رجوع من الحمام».",
+      });
+      return;
+    }
+
+    if (intent === "wc_leave") {
+      const wc = tryWcLeave(db, token);
+      if (wc.outcome === "not_found") {
+        let dbRows = 0;
+        try {
+          dbRows = db.prepare("SELECT COUNT(*) AS c FROM codes").get().c;
+        } catch {
+          /* noop */
+        }
+        console.warn(
+          `[api/scan] wc_leave invalid_token tokenLen=${token.length} dbRows=${dbRows} host=${req.get("host") || ""}`
+        );
+        res.status(404).json({
+          ok: false,
+          error: "invalid_token",
+          hintAr:
+            "التوكن في الـ QR مش في قاعدة السيرفر الحالية. من Render Shell شغّل: npm run seed ثم امسح QR من الأدمن أو حمّل ZIP من الموقع (طباعة قديمة = غالبًا غلط).",
+          hintEn:
+            "This QR token is not in the live database. In Render Shell run: npm run seed — then scan a QR from Admin or re-download the ZIP. Old prints often mismatch after a new seed.",
+        });
+        return;
+      }
+      if (wc.outcome === "must_register_first") {
+        res.status(200).json({
+          ok: false,
+          error: "must_register_first",
+          slot: wc.slot,
+          messageAr:
+            "الرمز لم يُسجَّل دخوله بعد. سجّل أولاً من رابط الـ QR أو من خيار «تسجيل دخول» هنا.",
+        });
+        return;
+      }
+      if (wc.outcome === "wc_already_inside") {
+        res.json({
+          ok: true,
+          status: "wc_already_inside",
+          slot: wc.slot,
+          messageAr: "مسجّل كمتواجد أصلاً (لا يوجد خروج للحمام مسجّل). لا حاجة لإجراء إضافي.",
+        });
+        return;
+      }
+      res.json({
+        ok: true,
+        status: "wc_returned",
+        slot: wc.slot,
+        messageAr: "تم تسجيل الرجوع من الحمام — الحالة عادت طبيعية.",
+      });
+      return;
+    }
+
     const result = tryRegisterToken(db, token);
     if (result.outcome === "not_found") {
       let dbRows = 0;
@@ -545,7 +711,7 @@ app.get("/api/codes", (_req, res) => {
   try {
     const rows = db
       .prepare(
-        "SELECT slot, token, used, used_at FROM codes ORDER BY slot"
+        "SELECT slot, token, used, used_at, wc_away_at FROM codes ORDER BY slot"
       )
       .all();
     res.json({ ok: true, codes: rows });

@@ -26,6 +26,7 @@
     .pill { display: inline-block; padding: 0.15rem 0.45rem; border-radius: 999px; font-size: 0.75rem; }
     .pill.yes { background: #fef3c7; color: #92400e; }
     .pill.no { background: #d1fae5; color: #065f46; }
+    .pill.wc-away { background: #fde68a; color: #92400e; }
     .admin-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin: 1rem 0; }
     .admin-toolbar .btn.danger { background: #b91c1c; border: none; color: #fff; cursor: pointer; font: inherit; padding: 0.55rem 1rem; border-radius: 10px; font-weight: 600; }
     .admin-toolbar .btn.danger:disabled { opacity: 0.55; cursor: not-allowed; }
@@ -65,13 +66,19 @@
               ? '<span class="pill yes">used</span>'
               : '<span class="pill no">free</span>') +
             "</td><td>" +
+            (c.wc_away_at
+              ? '<span class="pill wc-away" title="' +
+                String(c.wc_away_at).replace(/"/g, "&quot;") +
+                '">WC</span>'
+              : "—") +
+            "</td><td>" +
             (c.used_at || "—") +
             "</td></tr>"
         )
         .join("");
       root.innerHTML =
         "<p class=\"sub\" dir=\"rtl\" style=\"margin:0 0 0.75rem;font-size:0.88rem\">صور الليبلز (نفس تصميم Burgundy) من <code>/qrcodes/</code> بعد <code>npm run seed</code>. لو الصور قديمة شغّل seed مرة من السيرفر.</p>" +
-        "<table><thead><tr><th>#</th><th>QR</th><th>Token</th><th>Status</th><th>Used at</th></tr></thead><tbody>" +
+        "<table><thead><tr><th>#</th><th>QR</th><th>Token</th><th>Status</th><th>WC</th><th>Used at</th></tr></thead><tbody>" +
         rows +
         "</tbody></table>";
     }

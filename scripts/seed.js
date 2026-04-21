@@ -39,6 +39,13 @@ function token() {
   return crypto.randomBytes(16).toString("base64url");
 }
 
+function ensureWcColumn(db) {
+  const names = new Set(db.prepare("PRAGMA table_info(codes)").all().map((c) => c.name));
+  if (!names.has("wc_away_at")) {
+    db.exec("ALTER TABLE codes ADD COLUMN wc_away_at TEXT");
+  }
+}
+
 /** Always rewrite PNGs + manifest from current DB so files match tokens (even when no new rows). */
 async function writeQrFilesAndManifest(db) {
   fs.mkdirSync(QR_DIR, { recursive: true });
@@ -78,6 +85,7 @@ async function main() {
       used_at TEXT
     );
   `);
+  ensureWcColumn(db);
 
   const existing = db.prepare("SELECT COUNT(*) AS c FROM codes").get().c;
   if (existing >= COUNT && !FORCE) {

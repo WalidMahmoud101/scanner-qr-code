@@ -1,6 +1,13 @@
 /**
  * Burgundy-style label card (same layout as QR-Burgundy-Labels/generate.js).
  * Used by seed.js to write PNGs under DATA_DIR/qrcodes/ (اسم الملف من qr-filename.js).
+ *
+ * الأرقام على الصورة:
+ *   الرقم الكبير في الشريط العلوي = رقم السلوت `slot` اللي seed يمرّره لكل ملف (4110، 5105، …).
+ *   ما تحتاجش تعدّل هذا الملف لكل رقم — كل صورة تتولّد لوحدها من اللوب في seed.
+ *
+ * اللي تغيّره لكل مناسبة (من .env مش من الكود):
+ *   LABEL_WEDDING_TITLE، LABEL_LOCATION_EN، وأسطر الفوتر العربي أدناه.
  */
 const fs = require("fs");
 const QRCode = require("qrcode");
@@ -31,7 +38,11 @@ function readLabelEnv() {
   const weddingTitle = process.env.LABEL_WEDDING_TITLE || "FAISAL & TALEED'S WEDDING";
   const locationEn =
     process.env.LABEL_LOCATION_EN || "Sofitel Cairo Downtown Nile - Cairo";
-  return { weddingTitle, locationEn };
+  const footerArLine1 =
+    process.env.LABEL_FOOTER_AR_LINE1 || "يُستخدَم هذا الرمز لمرّةٍ واحدةٍ فقط،";
+  const footerArLine2 =
+    process.env.LABEL_FOOTER_AR_LINE2 || "ومن قِبل شخصٍ واحدٍ.";
+  return { weddingTitle, locationEn, footerArLine1, footerArLine2 };
 }
 
 /**
@@ -39,10 +50,13 @@ function readLabelEnv() {
  */
 async function writeBurgundyLabelPng(opts) {
   const { url, slot, outPath } = opts;
-  const { weddingTitle, locationEn } = readLabelEnv();
+  const { weddingTitle, locationEn, footerArLine1, footerArLine2 } = readLabelEnv();
+  /** الرقم الظاهر على الكارت = رقم السلوت من قاعدة البيانات (يتغيّر تلقائياً لكل PNG). */
   const displayNo = slot;
   const titleSvg = escSvgText(weddingTitle);
   const locSvg = escSvgText(locationEn);
+  const ar1 = escSvgText(footerArLine1);
+  const ar2 = escSvgText(footerArLine2);
   const gid = `g${slot}`;
 
   const qrRaw = await QRCode.toBuffer(url, {
@@ -90,8 +104,8 @@ async function writeBurgundyLabelPng(opts) {
   <text x="${W / 2}" y="0" text-anchor="middle" fill="#3d0c18"
     font-family="Geeza Pro, Baghdad, 'Noto Naskh Arabic', 'Damascus', Tahoma, Arial, sans-serif"
     font-size="15.2" font-weight="700" xml:lang="ar" direction="rtl">
-    <tspan x="${W / 2}" dy="34">يُستخدَم هذا الرمز لمرّةٍ واحدةٍ فقط،</tspan>
-    <tspan x="${W / 2}" dy="1.55em">ومن قِبل شخصٍ واحدٍ.</tspan>
+    <tspan x="${W / 2}" dy="34">${ar1}</tspan>
+    <tspan x="${W / 2}" dy="1.55em">${ar2}</tspan>
   </text>
   <text x="${W / 2}" y="112" text-anchor="middle" fill="#5c1324"
     font-family="Palatino Linotype, Palatino, Georgia, 'Times New Roman', Times, serif"

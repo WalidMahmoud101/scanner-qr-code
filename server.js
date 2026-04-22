@@ -58,6 +58,15 @@ function isPublicPath(req) {
   if (p.startsWith("/qrcodes/")) {
     return true;
   }
+  /** تحميل ZIP / manifest بدون Basic Auth — المتصفح لا ي reliably يرسل الهوية مع <a download> */
+  if (
+    p === "/qrcodes-all.zip" ||
+    p === "/qrcodes-egy.zip" ||
+    p === "/qrcodes-ua.zip" ||
+    p === "/manifest.json"
+  ) {
+    return true;
+  }
   if (p === "/styles.css") {
     return true;
   }
@@ -215,9 +224,7 @@ app.get("/qrcodes-ua.zip", (req, res) => {
 });
 
 app.get("/qrcodes-all.zip", (_req, res) => {
-  const publicDir = path.join(ROOT, "public");
   const qDir = QR_CODES_DIR;
-  const zipPath = path.join(publicDir, "qrcodes-all.zip");
   if (!fs.existsSync(qDir)) {
     res.status(404).type("text/plain").send("Missing QR folder — run npm run seed first.");
     return;
@@ -240,16 +247,29 @@ app.get("/qrcodes-all.zip", (_req, res) => {
       dbZip.close();
     }
   }
+  const tmp = path.join(os.tmpdir(), `qrcodes-all-${process.pid}-${Date.now()}.zip`);
   try {
-    execFileSync("zip", ["-qr", zipPath, "qrcodes"], {
+    execFileSync("zip", ["-qr", tmp, "qrcodes"], {
       cwd: DATA_DIR,
       stdio: "ignore",
     });
-  } catch {
+  } catch (e) {
+    console.error("[qrcodes-all.zip]", e);
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      /* ignore */
+    }
     res.status(500).type("text/plain").send("zip command failed.");
     return;
   }
-  res.download(zipPath, "qrcodes-all.zip");
+  res.download(tmp, "qrcodes-all.zip", () => {
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      /* ignore */
+    }
+  });
 });
 
 app.use((req, res, next) => {

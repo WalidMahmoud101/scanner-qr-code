@@ -82,8 +82,8 @@
     <div class="scan-result" id="result" role="status"></div>
 
     <p class="scan-foot" dir="rtl">
-      <strong>أندرويد / Chrome:</strong> صوت + هزاز. <strong>آيفون / Safari:</strong> لا يوجد هزاز للمواقع (قيود Apple) —
-      يُفعَّل صوت المسح بعد لمس «تشغيل الكاميرا»، ويُكرَّر وميض الإطار مرتين عند النتيجة ليكون واضحاً حتى لو الصوت منخفضاً.
+      <strong>أندرويد / Chrome:</strong> صوت + هزاز. <strong>آيفون / Safari:</strong> لا يوجد هزاز للمواقع (قيود Apple)؛ الصوت يعمل بعد لمس «تشغيل الكاميرا» (يفتح مسار الصوت).
+      يُكرَّر وميض الإطار مرتين عند النتيجة ليكون واضحاً حتى لو الصوت منخفضاً.
     </p>
   </main>
 
@@ -156,6 +156,9 @@
       }
 
       function stop() {
+        if (window.setScanningAudioActive) {
+          window.setScanningAudioActive(false);
+        }
         cancelDecodeLoop();
         decodeInFlight = false;
         barcodeDetector = null;
@@ -465,11 +468,23 @@
                   .catch(function () {});
               }
             }
+            video.addEventListener(
+              "playing",
+              function () {
+                if (window.unlockScanAudio) {
+                  window.unlockScanAudio();
+                }
+              },
+              { once: true }
+            );
             return video.play();
           })
           .then(function () {
             if (window.unlockScanAudio) {
               window.unlockScanAudio();
+            }
+            if (window.setScanningAudioActive) {
+              window.setScanningAudioActive(true);
             }
             scheduleDecodeLoop();
           })

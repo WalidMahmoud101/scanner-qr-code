@@ -153,6 +153,8 @@ app.use(
   helmet({
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
+    /** يسمح للمتصفحات / CDNs بتحميل الملفات المرفقة بدون سلوك غريب */
+    crossOriginResourcePolicy: false,
   })
 );
 app.use(express.json({ limit: "16kb" }));
@@ -160,6 +162,33 @@ app.get("/health", (_req, res) => {
   res.status(200).type("text/plain").send("ok");
 });
 app.use(protectDashboard);
+
+function headZipAttachment(res, downloadName) {
+  const safe = String(downloadName).replace(/[^\w.\-]/g, "_") || "download.zip";
+  res.status(200);
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", `attachment; filename="${safe}"`);
+  res.setHeader("Cache-Control", "no-store, max-age=0");
+  res.end();
+}
+
+app.head("/qrcodes-all.zip", (_req, res) => {
+  headZipAttachment(res, "qrcodes-all.zip");
+});
+app.head("/qrcodes-egy.zip", (_req, res) => {
+  try {
+    headZipAttachment(res, qrPacks.getPackRanges(DATA_DIR).zipEgy.downloadName);
+  } catch (e) {
+    res.status(500).end();
+  }
+});
+app.head("/qrcodes-ua.zip", (_req, res) => {
+  try {
+    headZipAttachment(res, qrPacks.getPackRanges(DATA_DIR).zipUa.downloadName);
+  } catch (e) {
+    res.status(500).end();
+  }
+});
 
 async function sendQrRangeZip(_req, res, spec) {
   const { start, count, downloadName } = spec;

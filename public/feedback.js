@@ -220,9 +220,14 @@
     }
   }
 
-  var VIB_OK = [200, 130, 200, 130, 320];
-  var VIB_WARN = [90, 110, 90, 110, 90, 110, 90];
-  var VIB_BAD = [100, 90, 100];
+  /** أنماط أطول وأوضح؛ أندرويد يكرّر النمط أكثر من مرة للتمييز اللمسي */
+  var VIB_OK = [240, 95, 240, 95, 240, 115, 520];
+  var VIB_WARN = [88, 72, 88, 72, 88, 72, 88, 72, 88, 72, 95];
+  var VIB_BAD = [210, 75, 210, 75, 260, 90, 420];
+
+  function isLikelyAndroid() {
+    return /Android/i.test(ua);
+  }
 
   function vibrateSumMs(arr) {
     var t = 0;
@@ -232,6 +237,8 @@
 
   function buzzPattern(arr) {
     if (typeof w.navigator.vibrate !== "function") return;
+    var repeats = isLikelyAndroid() ? 3 : 2;
+    var gapMs = isLikelyAndroid() ? 140 : 200;
     function fire() {
       try {
         w.navigator.vibrate(arr);
@@ -239,9 +246,17 @@
         /* ignore */
       }
     }
-    fire();
-    var pause = vibrateSumMs(arr) + 180;
-    w.setTimeout(fire, pause);
+    var cycle = vibrateSumMs(arr) + gapMs;
+    var n = 0;
+    function next() {
+      if (n >= repeats) return;
+      fire();
+      n += 1;
+      if (n < repeats) {
+        w.setTimeout(next, cycle);
+      }
+    }
+    next();
   }
 
   function beep(kind) {

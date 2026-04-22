@@ -26,11 +26,14 @@
     .pill { display: inline-block; padding: 0.15rem 0.45rem; border-radius: 999px; font-size: 0.75rem; }
     .pill.yes { background: #fef3c7; color: #92400e; }
     .pill.no { background: #d1fae5; color: #065f46; }
-    .pill.wc-away { background: #fde68a; color: #92400e; }
     .admin-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin: 1rem 0; }
     .admin-toolbar .btn.danger { background: #b91c1c; border: none; color: #fff; cursor: pointer; font: inherit; padding: 0.55rem 1rem; border-radius: 10px; font-weight: 600; }
     .admin-toolbar .btn.danger:disabled { opacity: 0.55; cursor: not-allowed; }
     #resetMsg { font-size: 0.9rem; color: var(--muted); }
+    #packPanel { margin: 0 0 1rem; padding: 0.85rem 1rem; border: 1px solid var(--border); border-radius: 12px; line-height: 1.55; }
+    #packPanel .pack-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; margin-top: 0.55rem; }
+    #packPanel input[type="number"] { width: 5.5rem; padding: 0.35rem 0.45rem; border-radius: 8px; border: 1px solid var(--border); background: rgba(0,0,0,0.2); color: inherit; font: inherit; }
+    #packMsg { margin-top: 0.65rem; font-size: 0.88rem; color: var(--muted); }
   </style>
 </head>
 <body class="home">
@@ -41,13 +44,22 @@
       <button type="button" class="btn danger" id="btnReset">إعادة تصفير الكل (used → 0)</button>
       <span id="resetMsg"></span>
     </div>
+    <div id="packPanel" dir="rtl" hidden></div>
+    <p class="sub" dir="rtl" style="margin:0 0 0.75rem;font-size:0.88rem">
+      صور الليبلز من <code>/qrcodes/</code> بعد <code>npm run seed</code>. عند زيادة العدد احفظ النموذج أدناه ثم شغّل <code>npm run seed</code> على السيرفر.
+    </p>
     <div class="table-wrap" id="root"><p>Loading…</p></div>
   </main>
   <script>
     const root = document.getElementById("root");
+    const packPanel = document.getElementById("packPanel");
     const toolbar = document.getElementById("toolbar");
     const btnReset = document.getElementById("btnReset");
     const resetMsg = document.getElementById("resetMsg");
+
+    function qrPngName(slot) {
+      return String(Number(slot)).padStart(5, "0") + ".png";
+    }
 
     function renderTable(d) {
       const rows = d.codes
@@ -56,8 +68,8 @@
             "<tr><td>" +
             c.slot +
             '</td><td class="qr-cell"><img class="qr-thumb" src="/qrcodes/' +
-            String(c.slot).padStart(3, "0") +
-            '.png" alt="QR ' +
+            qrPngName(c.slot) +
+            '" alt="QR ' +
             c.slot +
             '" loading="lazy" /></td><td class="tok"><code class="tok">' +
             c.token +
@@ -66,21 +78,128 @@
               ? '<span class="pill yes">used</span>'
               : '<span class="pill no">free</span>') +
             "</td><td>" +
-            (c.wc_away_at
-              ? '<span class="pill wc-away" title="' +
-                String(c.wc_away_at).replace(/"/g, "&quot;") +
-                '">WC</span>'
-              : "—") +
-            "</td><td>" +
             (c.used_at || "—") +
             "</td></tr>"
         )
         .join("");
       root.innerHTML =
-        "<p class=\"sub\" dir=\"rtl\" style=\"margin:0 0 0.75rem;font-size:0.88rem\">صور الليبلز (نفس تصميم Burgundy) من <code>/qrcodes/</code> بعد <code>npm run seed</code>. لو الصور قديمة شغّل seed مرة من السيرفر.</p>" +
-        "<table><thead><tr><th>#</th><th>QR</th><th>Token</th><th>Status</th><th>WC</th><th>Used at</th></tr></thead><tbody>" +
+        "<table><thead><tr><th>#</th><th>QR</th><th>Token</th><th>Status</th><th>Used at</th></tr></thead><tbody>" +
         rows +
         "</tbody></table>";
+    }
+
+    function renderPackPanel(d) {
+      if (!d || !d.ok) {
+        packPanel.hidden = true;
+        packPanel.innerHTML = "";
+        return;
+      }
+      const warn = d.seedEnvOverridesPacks
+        ? "<p style=\"margin:0 0 0.5rem;color:#fbbf24;font-size:0.86rem\">تنبيه: يوجد <code>SEED_SLOT_RANGES</code> في بيئة السيرفر — <code>npm run seed</code> يتجاهل الحقول هنا ويستخدم المتغير فقط. احذف المتغير أو عدّله يدوياً إن أردت الاعتماد على هذا النموذج.</p>"
+        : "";
+      const clampNote = d.uaExtraClamped
+        ? "<p style=\"margin:0.35rem 0 0;font-size:0.82rem;color:#b45309\">كانت إضافة الإمارات في الملف أعلى من الحد المسموح لتفادي التداخل مع مصر — تم ضبط الملف إلى الحد الفعلي (<strong>" +
+          d.uaExtraEffective +
+          "</strong>؛ أقصى إضافة مسموحة: " +
+          d.maxUaExtra +
+          ").</p>"
+        : "";
+      packPanel.innerHTML =
+        "<h2 style=\"margin:0 0 0.35rem;font-size:1.05rem\">زيادة عدد الأكواد (منفصل: UAE ثم EGY)</h2>" +
+        warn +
+        "<p style=\"margin:0;color:var(--muted);font-size:0.88rem\">الأرقام الأساسية من إعداد السيرفر (<code>QR_UA_START</code>، <code>QR_UA_BASE_COUNT</code>، <code>QR_EGY_START</code>، <code>QR_EGY_BASE_COUNT</code>). الإضافة تكمل من آخر رقم لكل دولة دون تغيير الأرقام القديمة.</p>" +
+        "<div class=\"pack-row\"><strong>🇦🇪 الإمارات UA:</strong> من " +
+        d.uaStart +
+        " — العدد الحالي <strong>" +
+        d.uaCount +
+        "</strong> (أساسي " +
+        d.uaBaseCount +
+        ") — حتى الرقم <strong>" +
+        d.uaEnd +
+        "</strong></div>" +
+        "<div class=\"pack-row\"><label>عدد أكواد إضافية للإمارات (0–" +
+        d.maxUaExtra +
+        "):</label> <input type=\"number\" id=\"inpUaExtra\" min=\"0\" max=\"" +
+        d.maxUaExtra +
+        "\" step=\"1\" value=\"" +
+        d.uaExtra +
+        "\" /></div>" +
+        "<div class=\"pack-row\" style=\"margin-top:0.75rem\"><strong>🇪🇬 مصر EGY:</strong> من " +
+        d.egyStart +
+        " — العدد الحالي <strong>" +
+        d.egyCount +
+        "</strong> (أساسي " +
+        d.egyBaseCount +
+        ") — حتى الرقم <strong>" +
+        d.egyEnd +
+        "</strong></div>" +
+        "<div class=\"pack-row\"><label>عدد أكواد إضافية لمصر:</label> <input type=\"number\" id=\"inpEgyExtra\" min=\"0\" max=\"99999\" step=\"1\" value=\"" +
+        d.egyExtra +
+        "\" /></div>" +
+        "<div class=\"pack-row\" style=\"margin-top:0.65rem\"><button type=\"button\" class=\"btn\" id=\"btnSavePacks\">حفظ الأعداد الإضافية</button></div>" +
+        "<p style=\"margin:0.5rem 0 0;font-size:0.82rem;color:var(--muted)\">بعد الحفظ: <code>npm run seed</code> لإضافة صفوف جديدة فقط (بدون مسح القديم). لتقليل العدد أو تغيير النطاق بالكامل استخدم <code>FORCE_SEED=1 npm run seed</code> (يُعاد توليد كل التوكنات).</p>" +
+        "<p style=\"margin:0.25rem 0 0;font-size:0.82rem;color:var(--muted)\">نطاق الـ seed المقترح: <code>" +
+        String(d.seedSlotRangesString || "")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;") +
+        "</code></p>" +
+        clampNote +
+        "<div id=\"packMsg\"></div>";
+      packPanel.hidden = false;
+      var btn = document.getElementById("btnSavePacks");
+      var packMsg = document.getElementById("packMsg");
+      btn.addEventListener("click", function () {
+        packMsg.textContent = "";
+        var ua = parseInt(document.getElementById("inpUaExtra").value, 10) || 0;
+        var eg = parseInt(document.getElementById("inpEgyExtra").value, 10) || 0;
+        btn.disabled = true;
+        fetch("/api/qr-extra-counts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ uaExtra: ua, egyExtra: eg }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (x) {
+            if (x.j && x.j.ok) {
+              packMsg.textContent =
+                (x.j.messageAr || "تم الحفظ.") +
+                (x.j.clampedUa ? " — تم ضبط إضافة الإمارات تلقائياً حتى لا يحدث تداخل مع مصر." : "");
+              return fetch("/api/qr-extra-counts").then(function (r2) {
+                return r2.json();
+              });
+            }
+            packMsg.textContent = "فشل: " + (x.j && x.j.error ? x.j.error : "unknown");
+            return null;
+          })
+          .then(function (d2) {
+            if (d2 && d2.ok) renderPackPanel(d2);
+          })
+          .catch(function () {
+            packMsg.textContent = "خطأ في الشبكة.";
+          })
+          .finally(function () {
+            btn.disabled = false;
+          });
+      });
+    }
+
+    function loadPackPanel() {
+      return fetch("/api/qr-extra-counts")
+        .then(function (r) {
+          if (r.status === 401) return null;
+          return r.json();
+        })
+        .then(function (d) {
+          if (d && d.ok) renderPackPanel(d);
+          else packPanel.hidden = true;
+        })
+        .catch(function () {
+          packPanel.hidden = true;
+        });
     }
 
     function loadCodes() {
@@ -104,6 +223,7 @@
           }
           renderTable(d);
           toolbar.hidden = false;
+          loadPackPanel();
         })
         .catch(() => {
           root.textContent = "Failed to load.";

@@ -9,6 +9,8 @@ const express = require("express");
 const helmet = require("helmet");
 const Database = require("better-sqlite3");
 const selfsigned = require("selfsigned");
+const { qrPngBasename } = require("./scripts/lib/qr-filename");
+const qrPacks = require("./scripts/lib/qr-pack-ranges");
 
 const ROOT = __dirname;
 /** SQLite + أي ملفات data؛ على Render مع قرص دائم: اضبط DATA_DIR=/var/data (نفس mountPath للقرص) */
@@ -149,6 +151,69 @@ app.get("/health", (_req, res) => {
 });
 app.use(protectDashboard);
 
+function sendQrRangeZip(_req, res, spec) {
+  const { start, count, downloadName } = spec;
+  const qDir = QR_CODES_DIR;
+  if (!fs.existsSync(qDir)) {
+    res.status(404).type("text/plain").send("Missing QR folder — run npm run seed first.");
+    return;
+  }
+  const relPaths = [];
+  for (let i = 0; i < count; i++) {
+    const slot = start + i;
+    const basename = qrPngBasename(slot);
+    const abs = path.join(qDir, basename);
+    if (!fs.existsSync(abs)) {
+      res
+        .status(404)
+        .type("text/plain; charset=utf-8")
+        .send(
+          `Missing ${basename} (slot ${slot}). Run npm run seed with SEED_SLOT_RANGES matching these ranges.`
+        );
+      return;
+    }
+    relPaths.push(`qrcodes/${basename}`);
+  }
+  const tmp = path.join(os.tmpdir(), `qr-range-${start}-${process.pid}-${Date.now()}.zip`);
+  try {
+    execFileSync("zip", ["-qr", tmp, ...relPaths], { cwd: DATA_DIR, stdio: "ignore" });
+  } catch (e) {
+    console.error("[qrcodes-range-zip]", e);
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      /* ignore */
+    }
+    res.status(500).type("text/plain").send("zip command failed.");
+    return;
+  }
+  res.download(tmp, downloadName, () => {
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
+app.get("/qrcodes-egy.zip", (req, res) => {
+  try {
+    sendQrRangeZip(req, res, qrPacks.getPackRanges(DATA_DIR).zipEgy);
+  } catch (e) {
+    console.error("[qrcodes-egy.zip]", e);
+    res.status(500).type("text/plain; charset=utf-8").send(e.message || "range error");
+  }
+});
+
+app.get("/qrcodes-ua.zip", (req, res) => {
+  try {
+    sendQrRangeZip(req, res, qrPacks.getPackRanges(DATA_DIR).zipUa);
+  } catch (e) {
+    console.error("[qrcodes-ua.zip]", e);
+    res.status(500).type("text/plain; charset=utf-8").send(e.message || "range error");
+  }
+});
+
 app.get("/qrcodes-all.zip", (_req, res) => {
   const publicDir = path.join(ROOT, "public");
   const qDir = QR_CODES_DIR;
@@ -238,26 +303,12 @@ function html(title, bodyClass, heading, message, sub) {
 </html>`;
 }
 
-function ensureCodesSchema(db) {
-  try {
-    const cols = db.prepare("PRAGMA table_info(codes)").all();
-    const names = new Set(cols.map((c) => c.name));
-    if (!names.has("wc_away_at")) {
-      db.exec("ALTER TABLE codes ADD COLUMN wc_away_at TEXT");
-      console.log("[db] migrated codes: added wc_away_at (WC in/out from scan page)");
-    }
-  } catch (e) {
-    console.error("[db] ensureCodesSchema:", e);
-  }
-}
-
 function getDb() {
   if (!fs.existsSync(DB_PATH)) {
     return null;
   }
   try {
     const db = new Database(DB_PATH, { readonly: false });
-    ensureCodesSchema(db);
     return db;
   } catch (e) {
     console.error("[db] open failed:", e);
@@ -359,53 +410,6 @@ function findCodeRowByCandidates(db, candidates) {
   return null;
 }
 
-function findCodeRowWithWc(db, primaryToken) {
-  const candidates = tokenLookupCandidates(primaryToken);
-  for (const v of candidates) {
-    const row = db
-      .prepare(
-        "SELECT slot, token, used, used_at, wc_away_at FROM codes WHERE token = ?"
-      )
-      .get(v);
-    if (row) {
-      return row;
-    }
-  }
-  return null;
-}
-
-/** مسار الحمام: نفس الـ QR بعد التسجيل — يُمسح من صفحة scan.html فقط (intent). */
-function tryWcEnter(db, primaryToken) {
-  const row = findCodeRowWithWc(db, primaryToken);
-  if (!row) {
-    return { outcome: "not_found" };
-  }
-  if (!row.used) {
-    return { outcome: "must_register_first", slot: row.slot };
-  }
-  if (row.wc_away_at) {
-    return { outcome: "wc_already_away", slot: row.slot };
-  }
-  const now = new Date().toISOString();
-  db.prepare("UPDATE codes SET wc_away_at = ? WHERE token = ?").run(now, row.token);
-  return { outcome: "wc_entered", slot: row.slot };
-}
-
-function tryWcLeave(db, primaryToken) {
-  const row = findCodeRowWithWc(db, primaryToken);
-  if (!row) {
-    return { outcome: "not_found" };
-  }
-  if (!row.used) {
-    return { outcome: "must_register_first", slot: row.slot };
-  }
-  if (!row.wc_away_at) {
-    return { outcome: "wc_already_inside", slot: row.slot };
-  }
-  db.prepare("UPDATE codes SET wc_away_at = NULL WHERE token = ?").run(row.token);
-  return { outcome: "wc_returned", slot: row.slot };
-}
-
 /** @returns {{ outcome: "registered", slot: number } | { outcome: "already", slot: number } | { outcome: "not_found" }} */
 function tryRegisterToken(db, primaryToken) {
   const candidates = tokenLookupCandidates(primaryToken);
@@ -433,10 +437,6 @@ app.post("/api/scan", (req, res) => {
     return;
   }
 
-  const intentRaw = req.body && req.body.intent;
-  const intent =
-    intentRaw === "wc_enter" || intentRaw === "wc_leave" ? String(intentRaw) : "register";
-
   const db = getDb();
   if (!db) {
     res.status(503).json({ ok: false, error: "no_database" });
@@ -444,106 +444,6 @@ app.post("/api/scan", (req, res) => {
   }
 
   try {
-    if (intent === "wc_enter") {
-      const wc = tryWcEnter(db, token);
-      if (wc.outcome === "not_found") {
-        let dbRows = 0;
-        try {
-          dbRows = db.prepare("SELECT COUNT(*) AS c FROM codes").get().c;
-        } catch {
-          /* noop */
-        }
-        console.warn(
-          `[api/scan] wc_enter invalid_token tokenLen=${token.length} dbRows=${dbRows} host=${req.get("host") || ""}`
-        );
-        res.status(404).json({
-          ok: false,
-          error: "invalid_token",
-          hintAr:
-            "التوكن في الـ QR مش في قاعدة السيرفر الحالية. من Render Shell شغّل: npm run seed ثم امسح QR من الأدمن أو حمّل ZIP من الموقع (طباعة قديمة = غالبًا غلط).",
-          hintEn:
-            "This QR token is not in the live database. In Render Shell run: npm run seed — then scan a QR from Admin or re-download the ZIP. Old prints often mismatch after a new seed.",
-        });
-        return;
-      }
-      if (wc.outcome === "must_register_first") {
-        res.status(200).json({
-          ok: false,
-          error: "must_register_first",
-          slot: wc.slot,
-          messageAr:
-            "الرمز لم يُسجَّل دخوله بعد. افتح رابط الـ QR من المتصفح مرة واحدة أولاً (أو اختر «تسجيل دخول» هنا ثم امسح)، ثم استخدم «ذهاب للحمام».",
-        });
-        return;
-      }
-      if (wc.outcome === "wc_already_away") {
-        res.json({
-          ok: true,
-          status: "wc_already_away",
-          slot: wc.slot,
-          messageAr: "مسجّل بالفعل كمتوجّه للحمام. عند الرجوع اختر «رجوع من الحمام».",
-        });
-        return;
-      }
-      res.json({
-        ok: true,
-        status: "wc_entered",
-        slot: wc.slot,
-        messageAr: "تم تسجيل الذهاب للحمام (WC). عند العودة امسح نفس الرمز مع «رجوع من الحمام».",
-      });
-      return;
-    }
-
-    if (intent === "wc_leave") {
-      const wc = tryWcLeave(db, token);
-      if (wc.outcome === "not_found") {
-        let dbRows = 0;
-        try {
-          dbRows = db.prepare("SELECT COUNT(*) AS c FROM codes").get().c;
-        } catch {
-          /* noop */
-        }
-        console.warn(
-          `[api/scan] wc_leave invalid_token tokenLen=${token.length} dbRows=${dbRows} host=${req.get("host") || ""}`
-        );
-        res.status(404).json({
-          ok: false,
-          error: "invalid_token",
-          hintAr:
-            "التوكن في الـ QR مش في قاعدة السيرفر الحالية. من Render Shell شغّل: npm run seed ثم امسح QR من الأدمن أو حمّل ZIP من الموقع (طباعة قديمة = غالبًا غلط).",
-          hintEn:
-            "This QR token is not in the live database. In Render Shell run: npm run seed — then scan a QR from Admin or re-download the ZIP. Old prints often mismatch after a new seed.",
-        });
-        return;
-      }
-      if (wc.outcome === "must_register_first") {
-        res.status(200).json({
-          ok: false,
-          error: "must_register_first",
-          slot: wc.slot,
-          messageAr:
-            "الرمز لم يُسجَّل دخوله بعد. سجّل أولاً من رابط الـ QR أو من خيار «تسجيل دخول» هنا.",
-        });
-        return;
-      }
-      if (wc.outcome === "wc_already_inside") {
-        res.json({
-          ok: true,
-          status: "wc_already_inside",
-          slot: wc.slot,
-          messageAr: "مسجّل كمتواجد أصلاً (لا يوجد خروج للحمام مسجّل). لا حاجة لإجراء إضافي.",
-        });
-        return;
-      }
-      res.json({
-        ok: true,
-        status: "wc_returned",
-        slot: wc.slot,
-        messageAr: "تم تسجيل الرجوع من الحمام — الحالة عادت طبيعية.",
-      });
-      return;
-    }
-
     const result = tryRegisterToken(db, token);
     if (result.outcome === "not_found") {
       let dbRows = 0;
@@ -673,6 +573,18 @@ app.get("/api/status", (_req, res) => {
     } catch {
       qrPngCount = 0;
     }
+    let qrPackSummary = null;
+    try {
+      const p = qrPacks.getPackRanges(DATA_DIR);
+      qrPackSummary = {
+        uaRange: `${p.uaStart}…${p.uaEnd} (${p.uaCount})`,
+        egyRange: `${p.egyStart}…${p.egyEnd} (${p.egyCount})`,
+        uaExtra: p.uaExtra,
+        egyExtra: p.egyExtra,
+      };
+    } catch {
+      qrPackSummary = null;
+    }
     res.json({
       ok: true,
       total,
@@ -680,6 +592,7 @@ app.get("/api/status", (_req, res) => {
       remaining: total - used,
       qrPngCount,
       imagesMatchDb: qrPngCount === total,
+      qrPackSummary,
     });
   } finally {
     db.close();
@@ -693,13 +606,71 @@ app.get("/api/qr-slot/:slot", (req, res) => {
     res.status(400).end();
     return;
   }
-  const name = `${String(slot).padStart(3, "0")}.png`;
+  const name = qrPngBasename(slot);
   const file = path.join(QR_CODES_DIR, name);
   if (!fs.existsSync(file)) {
     res.status(404).end();
     return;
   }
   res.redirect(302, `/qrcodes/${name}`);
+});
+
+app.get("/api/qr-extra-counts", (_req, res) => {
+  try {
+    qrPacks.normalizeExtraCountsOnDisk(DATA_DIR);
+    const base = qrPacks.getBasePacks();
+    const extras = qrPacks.readExtraCounts(DATA_DIR);
+    const p = qrPacks.getPackRanges(DATA_DIR);
+    const seedEnvOverridesPacks = Boolean((process.env.SEED_SLOT_RANGES || "").trim());
+    res.json({
+      ok: true,
+      seedEnvOverridesPacks,
+      uaStart: p.uaStart,
+      egyStart: p.egyStart,
+      uaBaseCount: p.uaBaseCount,
+      egyBaseCount: p.egyBaseCount,
+      uaExtra: extras.uaExtra,
+      egyExtra: extras.egyExtra,
+      uaExtraEffective: p.uaExtra,
+      uaExtraClamped: p.uaExtraClamped,
+      uaCount: p.uaCount,
+      egyCount: p.egyCount,
+      uaEnd: p.uaEnd,
+      egyEnd: p.egyEnd,
+      maxUaExtra: qrPacks.maxUaExtraAllowed(base),
+      seedSlotRangesString: p.seedSlotRangesString,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message || "range_error" });
+  }
+});
+
+app.post("/api/qr-extra-counts", (req, res) => {
+  try {
+    const base = qrPacks.getBasePacks();
+    const maxUa = qrPacks.maxUaExtraAllowed(base);
+    const w = qrPacks.writeExtraCounts(DATA_DIR, {
+      uaExtra: req.body && req.body.uaExtra,
+      egyExtra: req.body && req.body.egyExtra,
+    });
+    const p = qrPacks.getPackRanges(DATA_DIR);
+    res.json({
+      ok: true,
+      uaExtra: w.uaExtra,
+      egyExtra: w.egyExtra,
+      clampedUa: w.clampedUa,
+      maxUaExtra: maxUa,
+      uaEnd: p.uaEnd,
+      egyEnd: p.egyEnd,
+      uaCount: p.uaCount,
+      egyCount: p.egyCount,
+      seedSlotRangesString: p.seedSlotRangesString,
+      messageAr:
+        "تم الحفظ. الإمارات تظل أرقاماً منفصلة عن مصر (بدون تداخل). لتوليد صور وصفوف جديدة فقط: npm run seed (بدون FORCE). لإعادة توليد كل التوكنات من الصفر: FORCE_SEED=1 npm run seed.",
+    });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message || "bad_request" });
+  }
 });
 
 app.get("/api/codes", (_req, res) => {
@@ -711,7 +682,7 @@ app.get("/api/codes", (_req, res) => {
   try {
     const rows = db
       .prepare(
-        "SELECT slot, token, used, used_at, wc_away_at FROM codes ORDER BY slot"
+        "SELECT slot, token, used, used_at FROM codes ORDER BY slot"
       )
       .all();
     res.json({ ok: true, codes: rows });

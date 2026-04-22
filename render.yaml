@@ -4,7 +4,7 @@
 #    - PUBLIC_URL = https://اسم-خدمتك.onrender.com (نفس الرابط العام أعلاه؛ مهم لروابط الـ QR والمانيفست)
 #    - DASHBOARD_USER / DASHBOARD_PASS
 #    (Render يضيف RENDER_EXTERNAL_URL تلقائياً؛ PUBLIC_URL أوضح لو غيّرت الدومين لاحقاً)
-# 3) بعد أول نشر ناجح: من Shell شغّل npm run seed (يستخدم PUBLIC_URL؛ العدد الافتراضي 500 كود ما لم تضبط SEED_CODE_COUNT)
+# 3) بعد أول نشر ناجح: من Shell شغّل npm run seed (يستخدم PUBLIC_URL؛ أو SEED_SLOT_RANGES مثل 4110:75,5105:95 أو SEED_CODE_COUNT)
 #
 # --- قرص دائم (مدفوع) لـ SQLite ---
 # من الخدمة في Render: Disks → Add Disk → Mount path مثلاً /var/data → حجم 1GB+

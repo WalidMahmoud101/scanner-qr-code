@@ -58,34 +58,6 @@
     }
     .scan-foot { margin-top: 1rem; font-size: 0.82rem; color: var(--muted); line-height: 1.45; }
     .scan-foot a { color: #93c5fd; }
-    .scan-intent {
-      margin: 0.85rem 0 0;
-      padding: 0.65rem 0.75rem;
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      background: rgba(255, 255, 255, 0.03);
-    }
-    .scan-intent legend {
-      font-size: 0.8rem;
-      font-weight: 600;
-      color: var(--muted);
-      padding: 0 0.25rem;
-    }
-    .scan-intent-btns {
-      display: flex;
-      flex-direction: column;
-      gap: 0.45rem;
-      margin-top: 0.35rem;
-    }
-    .scan-intent-btns label {
-      display: flex;
-      align-items: center;
-      gap: 0.45rem;
-      font-size: 0.88rem;
-      cursor: pointer;
-      line-height: 1.35;
-    }
-    .scan-intent-btns input { accent-color: #a855f7; width: 1rem; height: 1rem; }
     /* main.card pulse uses global styles in styles.css */
   </style>
 </head>
@@ -94,26 +66,8 @@
     <p style="margin:0 0 0.5rem"><a href="/" style="color:var(--muted)">← الرئيسية</a></p>
     <h1>مسح QR من الكاميرا</h1>
     <p class="lead" style="margin:0.5rem 0 0;font-size:0.95rem;color:var(--muted)">
-      اختر <strong>نوع المسح</strong> تحت، ثم شغّل الكاميرا. تسجيل الدخول أول مرة يبقى كما هو؛ بعدها نفس الـ QR يُستخدم لتسجيل الذهاب للحمام والرجوع منه.
+      شغّل الكاميرا ووجّهها نحو رمز الـ QR لتسجيل الدخول (أول مرة فقط لكل رمز).
     </p>
-
-    <fieldset class="scan-intent">
-      <legend>نوع المسح</legend>
-      <div class="scan-intent-btns">
-        <label>
-          <input type="radio" name="scanIntent" value="register" checked />
-          <span>تسجيل دخول (أول مرة / الرابط العادي)</span>
-        </label>
-        <label>
-          <input type="radio" name="scanIntent" value="wc_enter" />
-          <span>توجّه للحمام (WC)</span>
-        </label>
-        <label>
-          <input type="radio" name="scanIntent" value="wc_leave" />
-          <span>رجوع من الحمام (الحالة عادية)</span>
-        </label>
-      </div>
-    </fieldset>
 
     <div class="scan-actions">
       <button type="button" class="btn" id="btnStart">تشغيل الكاميرا</button>
@@ -155,10 +109,6 @@
       var frameCounter = 0;
       var vfcHandle = null;
 
-      function getScanIntent() {
-        var el = document.querySelector('input[name="scanIntent"]:checked');
-        return el && el.value ? el.value : "register";
-      }
       var ua = navigator.userAgent || "";
       var isLikelyIOS =
         /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -349,7 +299,7 @@
         fetch("/api/scan", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ raw: raw, intent: getScanIntent() }),
+          body: JSON.stringify({ raw: raw }),
         })
           .then(function (r) {
             var ct = (r.headers.get("content-type") || "").toLowerCase();
@@ -395,62 +345,6 @@
                 "نغمة أخفّ من نجاح التسجيل الأول + وميض مختلف."
               );
               cooldownUntil = Date.now() + 900;
-              return;
-            }
-            if (res.body && res.body.ok && res.body.status === "wc_entered") {
-              if (window.feedbackScanResult) feedbackScanResult("ok");
-              showResult(
-                "ok",
-                "تسجيل WC",
-                "الرمز رقم #" + res.body.slot + " — " + (res.body.messageAr || "تم تسجيل الذهاب للحمام."),
-                "عند الرجوع اختر «رجوع من الحمام» ثم امسح نفس الـ QR."
-              );
-              cooldownUntil = Date.now() + 900;
-              return;
-            }
-            if (res.body && res.body.ok && res.body.status === "wc_returned") {
-              if (window.feedbackScanResult) feedbackScanResult("ok");
-              showResult(
-                "ok",
-                "رجوع من الحمام",
-                "الرمز رقم #" + res.body.slot + " — " + (res.body.messageAr || "تم تسجيل الرجوع."),
-                "الحالة عادت طبيعية؛ يمكن الدخول من الباب كالمعتاد."
-              );
-              cooldownUntil = Date.now() + 900;
-              return;
-            }
-            if (res.body && res.body.ok && res.body.status === "wc_already_away") {
-              if (window.feedbackScanResult) feedbackScanResult("warn");
-              showResult(
-                "warn",
-                "مسجّل للحمام مسبقاً",
-                "الرمز رقم #" + res.body.slot + " — " + (res.body.messageAr || ""),
-                "لو رجعت من الحمام اختر «رجوع من الحمام» وامسح مرة أخرى."
-              );
-              cooldownUntil = Date.now() + 900;
-              return;
-            }
-            if (res.body && res.body.ok && res.body.status === "wc_already_inside") {
-              if (window.feedbackScanResult) feedbackScanResult("warn");
-              showResult(
-                "warn",
-                "لم يُسجَّل خروج للحمام",
-                "الرمز رقم #" + res.body.slot + " — " + (res.body.messageAr || ""),
-                "لو رايح الحمام اختر أولاً «توجّه للحمام» ثم امسح."
-              );
-              cooldownUntil = Date.now() + 900;
-              return;
-            }
-            if (res.body && res.body.error === "must_register_first") {
-              if (window.feedbackScanResult) feedbackScanResult("bad");
-              showResult(
-                "bad",
-                "سجّل الدخول أولاً",
-                res.body.messageAr ||
-                  "افتح رابط الـ QR من المتصفح مرة واحدة، أو اختر «تسجيل دخول» هنا ثم امسح قبل استخدام خيارات الحمام.",
-                "رمز #" + (res.body.slot != null ? res.body.slot : "—")
-              );
-              cooldownUntil = Date.now() + 2200;
               return;
             }
             if (res.status === 404 || (res.body && res.body.error === "invalid_token")) {

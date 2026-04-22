@@ -1,6 +1,6 @@
 /**
  * Burgundy-style label card (same layout as QR-Burgundy-Labels/generate.js).
- * Used by seed.js to write PNGs under DATA_DIR/qrcodes/001.png …
+ * Used by seed.js to write PNGs under DATA_DIR/qrcodes/ (اسم الملف من qr-filename.js).
  */
 const fs = require("fs");
 const QRCode = require("qrcode");
@@ -28,14 +28,10 @@ function escSvgText(s) {
 }
 
 function readLabelEnv() {
-  const displayStart = Math.max(
-    1,
-    Number.parseInt(process.env.LABEL_DISPLAY_START || "4410", 10) || 4410
-  );
   const weddingTitle = process.env.LABEL_WEDDING_TITLE || "FAISAL & TALEED'S WEDDING";
   const locationEn =
     process.env.LABEL_LOCATION_EN || "Sofitel Cairo Downtown Nile - Cairo";
-  return { displayStart, weddingTitle, locationEn };
+  return { weddingTitle, locationEn };
 }
 
 /**
@@ -43,8 +39,8 @@ function readLabelEnv() {
  */
 async function writeBurgundyLabelPng(opts) {
   const { url, slot, outPath } = opts;
-  const { displayStart, weddingTitle, locationEn } = readLabelEnv();
-  const displayNo = displayStart + slot - 1;
+  const { weddingTitle, locationEn } = readLabelEnv();
+  const displayNo = slot;
   const titleSvg = escSvgText(weddingTitle);
   const locSvg = escSvgText(locationEn);
   const gid = `g${slot}`;

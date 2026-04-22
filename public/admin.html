@@ -57,18 +57,14 @@
     const btnReset = document.getElementById("btnReset");
     const resetMsg = document.getElementById("resetMsg");
 
-    function qrPngName(slot) {
-      return String(Number(slot)).padStart(5, "0") + ".png";
-    }
-
     function renderTable(d) {
       const rows = d.codes
         .map(
           (c) =>
             "<tr><td>" +
             c.slot +
-            '</td><td class="qr-cell"><img class="qr-thumb" src="/qrcodes/' +
-            qrPngName(c.slot) +
+            '</td><td class="qr-cell"><img class="qr-thumb" src="/api/qr-image/' +
+            c.slot +
             '" alt="QR ' +
             c.slot +
             '" loading="lazy" /></td><td class="tok"><code class="tok">' +

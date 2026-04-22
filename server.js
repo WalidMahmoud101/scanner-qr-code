@@ -9,7 +9,7 @@ const express = require("express");
 const helmet = require("helmet");
 const Database = require("better-sqlite3");
 const selfsigned = require("selfsigned");
-const { qrPngBasename } = require("./scripts/lib/qr-filename");
+const { qrPngBasename, resolveQrPngPath } = require("./scripts/lib/qr-filename");
 const qrPacks = require("./scripts/lib/qr-pack-ranges");
 const { streamZipToResponse } = require("./scripts/lib/stream-zip");
 
@@ -57,6 +57,9 @@ function isPublicPath(req) {
     return true;
   }
   if (p.startsWith("/qrcodes/")) {
+    return true;
+  }
+  if (p.startsWith("/api/qr-image/")) {
     return true;
   }
   /** تحميل ZIP / manifest بدون Basic Auth — المتصفح لا ي reliably يرسل الهوية مع <a download> */
@@ -200,18 +203,15 @@ async function sendQrRangeZip(_req, res, spec) {
   const files = [];
   for (let i = 0; i < count; i++) {
     const slot = start + i;
-    const basename = qrPngBasename(slot);
-    const abs = path.join(qDir, basename);
-    if (!fs.existsSync(abs)) {
-      res
-        .status(404)
-        .type("text/plain; charset=utf-8")
-        .send(
-          `Missing ${basename} (slot ${slot}). Run npm run seed with SEED_SLOT_RANGES matching these ranges.`
-        );
+    const canonical = qrPngBasename(slot);
+    const resolved = resolveQrPngPath(qDir, slot);
+    if (!resolved) {
+      res.status(404).type("text/plain; charset=utf-8").send(
+        `Missing PNG for slot ${slot} (expected ${canonical} or legacy name on disk). Run: npm run seed`
+      );
       return;
     }
-    files.push({ absPath: abs, entryName: `qrcodes/${basename}` });
+    files.push({ absPath: resolved.absPath, entryName: `qrcodes/${canonical}` });
   }
   await streamZipToResponse(res, downloadName, files);
 }
@@ -296,6 +296,33 @@ app.get("/manifest.json", (req, res, next) => {
   res.type("application/json; charset=utf-8");
   res.setHeader("Cache-Control", "no-store, max-age=0");
   res.send(fs.readFileSync(p, "utf8"));
+});
+
+/** لو الطلب /qrcodes/04110.png والملف على القرص اسمه 4110.png — حوّل للاسم الموجود */
+app.use("/qrcodes", (req, res, next) => {
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    return next();
+  }
+  const urlPath = (req.originalUrl || req.url || "").split("?")[0];
+  const m = urlPath.match(/\/qrcodes\/([^/]+\.png)$/i);
+  if (!m) {
+    return next();
+  }
+  const requested = m[1];
+  const direct = path.join(QR_CODES_DIR, requested);
+  if (fs.existsSync(direct)) {
+    return next();
+  }
+  const slotMatch = requested.match(/^0*(\d+)\.png$/i);
+  if (!slotMatch) {
+    return next();
+  }
+  const slot = Number(slotMatch[1]);
+  const resolved = resolveQrPngPath(QR_CODES_DIR, slot);
+  if (!resolved || resolved.basenameOnDisk === requested) {
+    return next();
+  }
+  res.redirect(302, `/qrcodes/${resolved.basenameOnDisk}`);
 });
 
 app.use("/qrcodes", express.static(QR_CODES_DIR));
@@ -630,13 +657,29 @@ app.get("/api/qr-slot/:slot", (req, res) => {
     res.status(400).end();
     return;
   }
-  const name = qrPngBasename(slot);
-  const file = path.join(QR_CODES_DIR, name);
-  if (!fs.existsSync(file)) {
+  const resolved = resolveQrPngPath(QR_CODES_DIR, slot);
+  if (!resolved) {
     res.status(404).end();
     return;
   }
-  res.redirect(302, `/qrcodes/${name}`);
+  res.redirect(302, `/qrcodes/${resolved.basenameOnDisk}`);
+});
+
+/** معاينة مصغّرة في الأدمن — يدعم أسماء ملفات قديمة على القرص */
+app.get("/api/qr-image/:slot", (req, res) => {
+  const slot = Number(req.params.slot);
+  if (!Number.isFinite(slot) || slot < 1 || slot > 99999) {
+    res.status(400).end();
+    return;
+  }
+  const resolved = resolveQrPngPath(QR_CODES_DIR, slot);
+  if (!resolved) {
+    res.status(404).end();
+    return;
+  }
+  res.setHeader("Cache-Control", "no-store, max-age=0");
+  res.type("image/png");
+  res.sendFile(path.resolve(resolved.absPath));
 });
 
 app.get("/api/qr-extra-counts", (_req, res) => {

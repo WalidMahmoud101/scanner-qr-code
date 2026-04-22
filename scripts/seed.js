@@ -4,7 +4,7 @@ require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 const crypto = require("crypto");
 const Database = require("better-sqlite3");
 const { writeBurgundyLabelPng } = require("./lib/burgundy-label");
-const { qrPngBasename } = require("./lib/qr-filename");
+const { qrPngBasename, clearQrPngIndexCache } = require("./lib/qr-filename");
 const { expectedSlotsFromPacks, getPackRanges } = require("./lib/qr-pack-ranges");
 
 const ROOT = path.join(__dirname, "..");
@@ -120,6 +120,7 @@ async function writeQrFilesAndManifest(db) {
     file: `qrcodes/${qrPngBasename(slot)}`,
   }));
   fs.writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2), "utf8");
+  clearQrPngIndexCache();
   console.log(`Wrote ${all.length} QR PNGs + manifest → ${MANIFEST_PATH} (PUBLIC_URL=${PUBLIC_URL}).`);
 }
 

@@ -206,8 +206,16 @@ async function sendQrRangeZip(_req, res, spec) {
     const canonical = qrPngBasename(slot);
     const resolved = resolveQrPngPath(qDir, slot);
     if (!resolved) {
+      let nPng = 0;
+      try {
+        nPng = fs.readdirSync(qDir).filter((f) => /\.png$/i.test(f)).length;
+      } catch {
+        /* noop */
+      }
       res.status(404).type("text/plain; charset=utf-8").send(
-        `Missing PNG for slot ${slot} (expected ${canonical} or legacy name on disk). Run: npm run seed`
+        `Missing PNG for slot ${slot} (canonical ${canonical}). Folder has ${nPng} PNG file(s). ` +
+          `If DB slots (e.g. 5105) do not match files on disk (e.g. old range started at 5015), run: ` +
+          `FORCE_SEED=1 npm run seed on the server with matching SEED_SLOT_RANGES / QR_EGY_START.`
       );
       return;
     }

@@ -16,6 +16,7 @@
     "zip-qrcodes": "node scripts/zip-qrcodes.js"
   },
   "dependencies": {
+    "archiver": "^7.0.1",
     "better-sqlite3": "^11.7.0",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",

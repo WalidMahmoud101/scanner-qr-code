@@ -1,7 +1,7 @@
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 const fs = require("fs");
-const { execFileSync, spawnSync } = require("child_process");
+const { spawnSync } = require("child_process");
 const os = require("os");
 const http = require("http");
 const https = require("https");
@@ -11,6 +11,7 @@ const Database = require("better-sqlite3");
 const selfsigned = require("selfsigned");
 const { qrPngBasename } = require("./scripts/lib/qr-filename");
 const qrPacks = require("./scripts/lib/qr-pack-ranges");
+const { streamZipToResponse } = require("./scripts/lib/stream-zip");
 
 const ROOT = __dirname;
 /** SQLite + أي ملفات data؛ على Render مع قرص دائم: اضبط DATA_DIR=/var/data (نفس mountPath للقرص) */
@@ -160,14 +161,14 @@ app.get("/health", (_req, res) => {
 });
 app.use(protectDashboard);
 
-function sendQrRangeZip(_req, res, spec) {
+async function sendQrRangeZip(_req, res, spec) {
   const { start, count, downloadName } = spec;
   const qDir = QR_CODES_DIR;
   if (!fs.existsSync(qDir)) {
     res.status(404).type("text/plain").send("Missing QR folder — run npm run seed first.");
     return;
   }
-  const relPaths = [];
+  const files = [];
   for (let i = 0; i < count; i++) {
     const slot = start + i;
     const basename = qrPngBasename(slot);
@@ -181,49 +182,34 @@ function sendQrRangeZip(_req, res, spec) {
         );
       return;
     }
-    relPaths.push(`qrcodes/${basename}`);
+    files.push({ absPath: abs, entryName: `qrcodes/${basename}` });
   }
-  const tmp = path.join(os.tmpdir(), `qr-range-${start}-${process.pid}-${Date.now()}.zip`);
-  try {
-    execFileSync("zip", ["-qr", tmp, ...relPaths], { cwd: DATA_DIR, stdio: "ignore" });
-  } catch (e) {
-    console.error("[qrcodes-range-zip]", e);
-    try {
-      fs.unlinkSync(tmp);
-    } catch {
-      /* ignore */
-    }
-    res.status(500).type("text/plain").send("zip command failed.");
-    return;
-  }
-  res.download(tmp, downloadName, () => {
-    try {
-      fs.unlinkSync(tmp);
-    } catch {
-      /* ignore */
-    }
-  });
+  await streamZipToResponse(res, downloadName, files);
 }
 
-app.get("/qrcodes-egy.zip", (req, res) => {
+app.get("/qrcodes-egy.zip", async (req, res) => {
   try {
-    sendQrRangeZip(req, res, qrPacks.getPackRanges(DATA_DIR).zipEgy);
+    await sendQrRangeZip(req, res, qrPacks.getPackRanges(DATA_DIR).zipEgy);
   } catch (e) {
     console.error("[qrcodes-egy.zip]", e);
-    res.status(500).type("text/plain; charset=utf-8").send(e.message || "range error");
+    if (!res.headersSent) {
+      res.status(500).type("text/plain; charset=utf-8").send(e.message || "range error");
+    }
   }
 });
 
-app.get("/qrcodes-ua.zip", (req, res) => {
+app.get("/qrcodes-ua.zip", async (req, res) => {
   try {
-    sendQrRangeZip(req, res, qrPacks.getPackRanges(DATA_DIR).zipUa);
+    await sendQrRangeZip(req, res, qrPacks.getPackRanges(DATA_DIR).zipUa);
   } catch (e) {
     console.error("[qrcodes-ua.zip]", e);
-    res.status(500).type("text/plain; charset=utf-8").send(e.message || "range error");
+    if (!res.headersSent) {
+      res.status(500).type("text/plain; charset=utf-8").send(e.message || "range error");
+    }
   }
 });
 
-app.get("/qrcodes-all.zip", (_req, res) => {
+app.get("/qrcodes-all.zip", async (_req, res) => {
   const qDir = QR_CODES_DIR;
   if (!fs.existsSync(qDir)) {
     res.status(404).type("text/plain").send("Missing QR folder — run npm run seed first.");
@@ -247,29 +233,18 @@ app.get("/qrcodes-all.zip", (_req, res) => {
       dbZip.close();
     }
   }
-  const tmp = path.join(os.tmpdir(), `qrcodes-all-${process.pid}-${Date.now()}.zip`);
+  const files = pngs.map((f) => ({
+    absPath: path.join(qDir, f),
+    entryName: `qrcodes/${f}`,
+  }));
   try {
-    execFileSync("zip", ["-qr", tmp, "qrcodes"], {
-      cwd: DATA_DIR,
-      stdio: "ignore",
-    });
+    await streamZipToResponse(res, "qrcodes-all.zip", files);
   } catch (e) {
     console.error("[qrcodes-all.zip]", e);
-    try {
-      fs.unlinkSync(tmp);
-    } catch {
-      /* ignore */
+    if (!res.headersSent) {
+      res.status(500).type("text/plain").send("zip build failed.");
     }
-    res.status(500).type("text/plain").send("zip command failed.");
-    return;
   }
-  res.download(tmp, "qrcodes-all.zip", () => {
-    try {
-      fs.unlinkSync(tmp);
-    } catch {
-      /* ignore */
-    }
-  });
 });
 
 app.use((req, res, next) => {

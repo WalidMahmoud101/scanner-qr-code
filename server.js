@@ -9,8 +9,7 @@ const express = require("express");
 const helmet = require("helmet");
 const Database = require("better-sqlite3");
 const selfsigned = require("selfsigned");
-const { qrPngBasename, resolveQrPngPath } = require("./scripts/lib/qr-filename");
-const qrPacks = require("./scripts/lib/qr-pack-ranges");
+const { resolveQrPngPath } = require("./scripts/lib/qr-filename");
 const { streamZipToResponse } = require("./scripts/lib/stream-zip");
 
 const ROOT = __dirname;
@@ -63,12 +62,7 @@ function isPublicPath(req) {
     return true;
   }
   /** تحميل ZIP / manifest بدون Basic Auth — المتصفح لا ي reliably يرسل الهوية مع <a download> */
-  if (
-    p === "/qrcodes-all.zip" ||
-    p === "/qrcodes-egy.zip" ||
-    p === "/qrcodes-ua.zip" ||
-    p === "/manifest.json"
-  ) {
+  if (p === "/qrcodes-all.zip" || p === "/manifest.json") {
     return true;
   }
   if (p === "/styles.css") {
@@ -178,73 +172,6 @@ function headZipAttachment(res, downloadName) {
 app.head("/qrcodes-all.zip", (_req, res) => {
   headZipAttachment(res, "qrcodes-all.zip");
 });
-app.head("/qrcodes-egy.zip", (_req, res) => {
-  try {
-    headZipAttachment(res, qrPacks.getPackRanges(DATA_DIR).zipEgy.downloadName);
-  } catch (e) {
-    res.status(500).end();
-  }
-});
-app.head("/qrcodes-ua.zip", (_req, res) => {
-  try {
-    headZipAttachment(res, qrPacks.getPackRanges(DATA_DIR).zipUa.downloadName);
-  } catch (e) {
-    res.status(500).end();
-  }
-});
-
-async function sendQrRangeZip(_req, res, spec) {
-  const { start, count, downloadName } = spec;
-  const qDir = QR_CODES_DIR;
-  if (!fs.existsSync(qDir)) {
-    res.status(404).type("text/plain").send("Missing QR folder — run npm run seed first.");
-    return;
-  }
-  const files = [];
-  for (let i = 0; i < count; i++) {
-    const slot = start + i;
-    const canonical = qrPngBasename(slot);
-    const resolved = resolveQrPngPath(qDir, slot);
-    if (!resolved) {
-      let nPng = 0;
-      try {
-        nPng = fs.readdirSync(qDir).filter((f) => /\.png$/i.test(f)).length;
-      } catch {
-        /* noop */
-      }
-      res.status(404).type("text/plain; charset=utf-8").send(
-        `Missing PNG for slot ${slot} (canonical ${canonical}). Folder has ${nPng} PNG file(s). ` +
-          `If DB slots (e.g. 5105) do not match files on disk (e.g. old range started at 5015), run: ` +
-          `FORCE_SEED=1 npm run seed on the server with matching SEED_SLOT_RANGES / QR_EGY_START.`
-      );
-      return;
-    }
-    files.push({ absPath: resolved.absPath, entryName: `qrcodes/${canonical}` });
-  }
-  await streamZipToResponse(res, downloadName, files);
-}
-
-app.get("/qrcodes-egy.zip", async (req, res) => {
-  try {
-    await sendQrRangeZip(req, res, qrPacks.getPackRanges(DATA_DIR).zipEgy);
-  } catch (e) {
-    console.error("[qrcodes-egy.zip]", e);
-    if (!res.headersSent) {
-      res.status(500).type("text/plain; charset=utf-8").send(e.message || "range error");
-    }
-  }
-});
-
-app.get("/qrcodes-ua.zip", async (req, res) => {
-  try {
-    await sendQrRangeZip(req, res, qrPacks.getPackRanges(DATA_DIR).zipUa);
-  } catch (e) {
-    console.error("[qrcodes-ua.zip]", e);
-    if (!res.headersSent) {
-      res.status(500).type("text/plain; charset=utf-8").send(e.message || "range error");
-    }
-  }
-});
 
 app.get("/qrcodes-all.zip", async (_req, res) => {
   const qDir = QR_CODES_DIR;
@@ -306,7 +233,7 @@ app.get("/manifest.json", (req, res, next) => {
   res.send(fs.readFileSync(p, "utf8"));
 });
 
-/** لو الطلب /qrcodes/04110.png والملف على القرص اسمه 4110.png — حوّل للاسم الموجود */
+/** لو الطلب /qrcodes/00160.png والملف على القرص اسمه 160.png — حوّل للاسم الموجود */
 app.use("/qrcodes", (req, res, next) => {
   if (req.method !== "GET" && req.method !== "HEAD") {
     return next();
@@ -632,18 +559,6 @@ app.get("/api/status", (_req, res) => {
     } catch {
       qrPngCount = 0;
     }
-    let qrPackSummary = null;
-    try {
-      const p = qrPacks.getPackRanges(DATA_DIR);
-      qrPackSummary = {
-        uaRange: `${p.uaStart}…${p.uaEnd} (${p.uaCount})`,
-        egyRange: `${p.egyStart}…${p.egyEnd} (${p.egyCount})`,
-        uaExtra: p.uaExtra,
-        egyExtra: p.egyExtra,
-      };
-    } catch {
-      qrPackSummary = null;
-    }
     res.json({
       ok: true,
       total,
@@ -651,7 +566,6 @@ app.get("/api/status", (_req, res) => {
       remaining: total - used,
       qrPngCount,
       imagesMatchDb: qrPngCount === total,
-      qrPackSummary,
     });
   } finally {
     db.close();
@@ -688,64 +602,6 @@ app.get("/api/qr-image/:slot", (req, res) => {
   res.setHeader("Cache-Control", "no-store, max-age=0");
   res.type("image/png");
   res.sendFile(path.resolve(resolved.absPath));
-});
-
-app.get("/api/qr-extra-counts", (_req, res) => {
-  try {
-    qrPacks.normalizeExtraCountsOnDisk(DATA_DIR);
-    const base = qrPacks.getBasePacks();
-    const extras = qrPacks.readExtraCounts(DATA_DIR);
-    const p = qrPacks.getPackRanges(DATA_DIR);
-    const seedEnvOverridesPacks = Boolean((process.env.SEED_SLOT_RANGES || "").trim());
-    res.json({
-      ok: true,
-      seedEnvOverridesPacks,
-      uaStart: p.uaStart,
-      egyStart: p.egyStart,
-      uaBaseCount: p.uaBaseCount,
-      egyBaseCount: p.egyBaseCount,
-      uaExtra: extras.uaExtra,
-      egyExtra: extras.egyExtra,
-      uaExtraEffective: p.uaExtra,
-      uaExtraClamped: p.uaExtraClamped,
-      uaCount: p.uaCount,
-      egyCount: p.egyCount,
-      uaEnd: p.uaEnd,
-      egyEnd: p.egyEnd,
-      maxUaExtra: qrPacks.maxUaExtraAllowed(base),
-      seedSlotRangesString: p.seedSlotRangesString,
-    });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message || "range_error" });
-  }
-});
-
-app.post("/api/qr-extra-counts", (req, res) => {
-  try {
-    const base = qrPacks.getBasePacks();
-    const maxUa = qrPacks.maxUaExtraAllowed(base);
-    const w = qrPacks.writeExtraCounts(DATA_DIR, {
-      uaExtra: req.body && req.body.uaExtra,
-      egyExtra: req.body && req.body.egyExtra,
-    });
-    const p = qrPacks.getPackRanges(DATA_DIR);
-    res.json({
-      ok: true,
-      uaExtra: w.uaExtra,
-      egyExtra: w.egyExtra,
-      clampedUa: w.clampedUa,
-      maxUaExtra: maxUa,
-      uaEnd: p.uaEnd,
-      egyEnd: p.egyEnd,
-      uaCount: p.uaCount,
-      egyCount: p.egyCount,
-      seedSlotRangesString: p.seedSlotRangesString,
-      messageAr:
-        "تم الحفظ. الإمارات تظل أرقاماً منفصلة عن مصر (بدون تداخل). لتوليد صور وصفوف جديدة فقط: npm run seed (بدون FORCE). لإعادة توليد كل التوكنات من الصفر: FORCE_SEED=1 npm run seed.",
-    });
-  } catch (e) {
-    res.status(400).json({ ok: false, error: e.message || "bad_request" });
-  }
 });
 
 app.get("/api/codes", (_req, res) => {

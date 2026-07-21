@@ -36,7 +36,7 @@ function basenameScore(slot, basename) {
 
 /**
  * يفهرس كل ملفات *.png تحت qDir: رقم السلوت ← مسار الملف.
- * يقبل أي عدد من الأصفار البادئة قبل الرقم (مثلاً 05105 أو 005105 إن وُجد).
+ * يقبل أي عدد من الأصفار البادئة قبل الرقم (مثلاً 00160 أو 000160 إن وُجد).
  */
 function buildSlotPngIndex(qDir) {
   const slotTo = new Map();

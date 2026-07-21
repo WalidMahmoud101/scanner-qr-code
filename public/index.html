@@ -10,18 +10,16 @@
   <main class="card wide">
     <h1>QR one-time registration</h1>
     <p class="lead">
-      There are <strong>500</strong> QR codes. Each link registers on the <strong>first</strong> visit only.
+      There are <strong>160</strong> QR codes. Each link registers on the <strong>first</strong> visit only.
       A second scan shows <em>Already registered</em>.
     </p>
     <p class="lead ar" dir="rtl">
-      يوجد ٥٠٠ رمز QR؛ أول مسح يسجّل الزيارة، وأي مسح لاحق يظهر أنه مسجّل مسبقاً.
+      يوجد ١٦٠ رمز QR؛ أول مسح يسجّل الزيارة، وأي مسح لاحق يظهر أنه مسجّل مسبقاً.
     </p>
     <section class="stats" id="stats">
       <p>Loading status…</p>
     </section>
     <p style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center">
-      <a class="btn secondary" href="/qrcodes-egy.zip">تحميل ZIP — مصر EGY (٩٥ رمز من ٥١٠٥)</a>
-      <a class="btn secondary" href="/qrcodes-ua.zip">تحميل ZIP — الإمارات UA (٧٥ رمز من ٤١١٠)</a>
       <a class="btn" href="/qrcodes-all.zip">تحميل كل الـ QR (ZIP)</a>
       <a class="btn" href="/scan.html">مسح من كاميرا الهاتف</a>
       <a class="btn" href="/admin.html">Open admin table</a>
@@ -57,21 +55,6 @@
               d.total +
               '</strong>). لو الرقمين مختلفين، شغّل من Shell على Render: <code>npm run seed</code> ثم حمّل الـ ZIP من جديد.</p>'
             : "";
-        var packLine =
-          d.qrPackSummary != null
-            ? "<p class=\"sub\" dir=\"rtl\" style=\"margin-top:0.5rem;line-height:1.5\">نطاق التحميل: <strong>UAE</strong> " +
-              d.qrPackSummary.uaRange +
-              " — <strong>EGY</strong> " +
-              d.qrPackSummary.egyRange +
-              (d.qrPackSummary.uaExtra || d.qrPackSummary.egyExtra
-                ? " (إضافي: إمارات +" +
-                  (d.qrPackSummary.uaExtra || 0) +
-                  "، مصر +" +
-                  (d.qrPackSummary.egyExtra || 0) +
-                  ")"
-                : "") +
-              "</p>"
-            : "";
         el.innerHTML =
           "<p><strong>" +
           d.used +
@@ -82,7 +65,6 @@
           "</strong> codes in DB &middot; <strong>" +
           pngN +
           "</strong> QR PNG files (what goes into the ZIP)</p>" +
-          packLine +
           warn;
       })
       .catch(() => {

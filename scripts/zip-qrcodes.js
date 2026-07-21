@@ -16,5 +16,8 @@ if (!fs.existsSync(qDir) || !fs.readdirSync(qDir).some((f) => f.endsWith(".png")
   process.exit(1);
 }
 fs.mkdirSync(path.dirname(zipOut), { recursive: true });
+if (fs.existsSync(zipOut)) {
+  fs.unlinkSync(zipOut);
+}
 execFileSync("zip", ["-qr", zipOut, "qrcodes"], { cwd: DATA_DIR, stdio: "inherit" });
 console.log("Created:", zipOut);

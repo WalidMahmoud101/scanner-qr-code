@@ -5,7 +5,6 @@ const crypto = require("crypto");
 const Database = require("better-sqlite3");
 const { writeBurgundyLabelPng } = require("./lib/burgundy-label");
 const { qrPngBasename, clearQrPngIndexCache } = require("./lib/qr-filename");
-const { expectedSlotsFromPacks, getPackRanges } = require("./lib/qr-pack-ranges");
 
 const ROOT = path.join(__dirname, "..");
 const DATA_DIR = process.env.DATA_DIR
@@ -15,10 +14,10 @@ const DATA_DIR = process.env.DATA_DIR
 const QR_DIR = path.join(DATA_DIR, "qrcodes");
 const MANIFEST_PATH = path.join(DATA_DIR, "manifest.json");
 const DB_PATH = path.join(DATA_DIR, "app.db");
-/** عدد أكواد QR عندما لا يُستخدم SEED_SLOT_RANGES (سلوتات 1..COUNT) */
+/** عدد أكواد QR الافتراضي (سلوتات 1..COUNT). */
 const COUNT = (() => {
-  const n = Number.parseInt(process.env.SEED_CODE_COUNT || "500", 10);
-  if (!Number.isFinite(n) || n < 1) return 500;
+  const n = Number.parseInt(process.env.SEED_CODE_COUNT || "160", 10);
+  if (!Number.isFinite(n) || n < 1) return 160;
   return Math.min(99999, n);
 })();
 const PUBLIC_URL = (
@@ -42,8 +41,8 @@ function token() {
 }
 
 /**
- * مثال: SEED_SLOT_RANGES=4110:75,5105:95
- * يعني 75 كود من 4110 (UAE) و 95 من 5105 (EGY) — بدون تكرار في الأرقام.
+ * مثال اختياري: SEED_SLOT_RANGES=1001:80,2001:80
+ * بدون هذا المتغير يستخدم النظام سلوتات متتالية 1..SEED_CODE_COUNT.
  */
 function parseSeedSlotRanges() {
   const raw = (process.env.SEED_SLOT_RANGES || "").trim();
@@ -90,12 +89,7 @@ function getExpectedSlots() {
   if (fromRanges) {
     return fromRanges;
   }
-  try {
-    return expectedSlotsFromPacks(DATA_DIR);
-  } catch (e) {
-    console.error("[seed] فشل نطاق UA/EGY (تحقق من QR_UA_* و QR_EGY_* في .env):", e.message);
-    throw e;
-  }
+  return Array.from({ length: COUNT }, (_, i) => i + 1);
 }
 
 /** Always rewrite PNGs + manifest from current DB so files match tokens (even when no new rows). */
@@ -130,12 +124,6 @@ async function main() {
   let packLine = "| SEED_CODE_COUNT → " + COUNT;
   if (rangesRaw) {
     packLine = "| SEED_SLOT_RANGES → " + rangesRaw;
-  } else {
-    try {
-      packLine = "| UA+EGY packs → " + getPackRanges(DATA_DIR).seedSlotRangesString;
-    } catch (e) {
-      packLine = "| UA+EGY packs → (خطأ: " + e.message + ")";
-    }
   }
   console.log("[seed] DATA_DIR →", DATA_DIR, packLine);
   fs.mkdirSync(DATA_DIR, { recursive: true });
